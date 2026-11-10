@@ -3,6 +3,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ward Nine</title>
+<link rel="icon" href="icons/icon.svg">
+<meta name="theme-color" content="#050506">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=JetBrains+Mono:wght@400;700&display=swap">
@@ -129,6 +133,7 @@ body.is-touch .keys.mob { display: grid; }
     <div class="seg-label">Mode</div>
     <div class="seg" id="modeSeg"><button type="button" data-v="shift">Until dawn</button><button type="button" data-v="endless">Endless night</button></div>
     <button class="go" id="startBtn" type="button">Begin the shift</button>
+    <button class="go ghost" id="installApp" type="button" style="display:none">Install as an app</button>
     <p class="stats" id="bestTxt"></p>
     <p class="stats">Sound on for the full effect</p>
   </div>
@@ -1218,4 +1223,5 @@ requestAnimationFrame(frame);
 })();
 </script>
 
+<script src="install.js"></script>
 </html>
