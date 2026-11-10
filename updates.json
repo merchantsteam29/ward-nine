@@ -1,0 +1,21 @@
+[
+  {
+    "version": "1.1",
+    "date": "2026-11-09",
+    "title": "Install as an app",
+    "notes": [
+      "Ward Nine can be installed as an app from the menu (Install as an app), with its own icon. It opens fullscreen and works offline once it has loaded."
+    ]
+  },
+  {
+    "version": "1.0",
+    "date": "2026-11-03",
+    "title": "Release",
+    "notes": [
+      "Work the night shift on Ward Nine, a hospital ward where something is loose.",
+      "The things in the dark hunt by noise: run and shoot, and they hear you.",
+      "Play until dawn or in an endless night, on Easy, Normal or Nightmare.",
+      "Watch out for the Ward Sister."
+    ]
+  }
+]
