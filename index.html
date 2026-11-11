@@ -82,9 +82,13 @@ button.go.ghost { background: transparent; color: var(--dim); border: 1px solid 
 .touch button { font: 700 10px var(--f-mono); letter-spacing: 0.06em; color: var(--ink); background: var(--panel); border: 1px solid rgba(217,210,196,0.25); width: 52px; height: 52px; border-radius: 50%; padding: 0; }
 .touch button[aria-pressed="true"] { border-color: var(--bulb); color: var(--bulb); }
 body.is-touch .touch { display: grid; }
+#tPause { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: 44px; height: 44px; font: 700 14px var(--f-mono); color: var(--ink); background: var(--panel); border: 1px solid rgba(217,210,196,0.25); border-radius: 50%; }
 body.is-touch .keys.desk { display: none; }
 .keys.mob { display: none; }
 body.is-touch .keys.mob { display: grid; }
+.keys.padk { display: none; }
+body.is-pad .keys.padk { display: grid; }
+body.is-pad .keys.desk, body.is-pad .keys.mob { display: none; }
 @media (prefers-reduced-motion: reduce) { .card h1 { animation: none; } }
 </style>
 <canvas id="game"></canvas>
@@ -94,12 +98,13 @@ body.is-touch .keys.mob { display: grid; }
   <div class="bar"><label><span>Breath</span><span id="staTxt"></span></label><div class="track"><div class="fill" id="staFill" style="width:100%"></div></div></div>
 </div>
 <div class="hud hud-tc" id="hudClock" hidden><span id="clock">12:00 AM</span><small id="left">—</small></div>
-<div class="hud hud-boss" id="hudBoss" hidden><div class="bar"><label><span>The Ward Sister</span><span id="bossTxt"></span></label><div class="track"><div class="fill" id="bossFill" style="width:100%"></div></div></div></div>
+<div class="hud hud-boss" id="hudBoss" hidden><div class="bar"><label><span id="bossName">The Ward Sister</span><span id="bossTxt"></span></label><div class="track"><div class="fill" id="bossFill" style="width:100%"></div></div></div></div>
 <div class="hud hud-bl" id="hudScore" hidden>Score <span id="score">0</span></div>
 <div class="hud hud-br" id="hudAmmo" hidden><div class="note" id="note"></div><div class="gun" id="gunTxt">Pistol</div><div class="ammo" id="ammo">8 <span>/ 32</span></div></div>
 <div class="hud hud-prompt" id="prompt" hidden></div>
 <div id="message"></div>
 <div id="hurt"></div>
+<button id="tPause" type="button" aria-label="Pause" hidden>II</button>
 <div class="touch" id="touchBtns">
   <button id="tRun" type="button" aria-pressed="false">RUN</button>
   <button id="tGun" type="button">GUN</button>
@@ -120,7 +125,7 @@ body.is-touch .keys.mob { display: grid; }
       <dt>Mouse</dt><dd>Aim the torch</dd>
       <dt>Click</dt><dd>Shoot</dd>
       <dt>R</dt><dd>Reload</dd>
-      <dt>Q</dt><dd>Switch gun</dd>
+      <dt>Q / 1-4</dt><dd>Switch gun</dd>
       <dt>G</dt><dd>Throw a flare</dd>
       <dt>E (hold)</dt><dd>Fix the fuse box</dd>
       <dt>F</dt><dd>Torch on / off (saves battery)</dd>
@@ -133,12 +138,26 @@ body.is-touch .keys.mob { display: grid; }
       <dt>FLARE / USE</dt><dd>Throw a flare, hold to fix the fuse box</dd>
       <dt>RLD / LITE</dt><dd>Reload, torch on / off</dd>
     </dl>
+    <dl class="keys padk">
+      <dt>Left stick</dt><dd>Move (LT to sprint)</dd>
+      <dt>Right stick</dt><dd>Aim the torch</dd>
+      <dt>RT</dt><dd>Shoot</dd>
+      <dt>X / Y</dt><dd>Reload, switch gun</dd>
+      <dt>B</dt><dd>Throw a flare</dd>
+      <dt>A (hold)</dt><dd>Fix the fuse box</dd>
+      <dt>LB / RB</dt><dd>Torch on / off</dd>
+      <dt>Start</dt><dd>Pause</dd>
+    </dl>
+    <div class="seg-label">Map</div>
+    <div class="seg" id="mapSeg"><button type="button" data-v="ward">Ward Nine</button><button type="button" data-v="basement">The Basement</button></div>
+    <p class="stats" id="mapDesc" style="margin-top:-6px"></p>
     <div class="seg-label">Difficulty</div>
     <div class="seg" id="diffSeg"><button type="button" data-v="easy">Easy</button><button type="button" data-v="normal">Normal</button><button type="button" data-v="nightmare">Nightmare</button></div>
     <div class="seg-label">Mode</div>
     <div class="seg" id="modeSeg"><button type="button" data-v="shift">Until dawn</button><button type="button" data-v="endless">Endless night</button></div>
     <button class="go" id="startBtn" type="button">Begin the shift</button>
     <button class="go ghost" id="setBtn" type="button">Settings</button>
+    <button class="go ghost" id="syncBtn" type="button" title="Keep your best scores on all your devices">☁ Sync</button>
     <button class="go ghost" id="installApp" type="button" style="display:none">Install as an app</button>
     <button class="go ghost" id="pcDownload" type="button" title="The Game Library app for Windows: every game in one place">Download for PC</button>
     <p class="stats" id="bestTxt"></p>
@@ -172,11 +191,14 @@ body.is-touch .keys.mob { display: grid; }
         <div class="seg" id="shakeSeg"><button type="button" data-v="1">Full</button><button type="button" data-v="0.4">Reduced</button><button type="button" data-v="0">Off</button></div></div>
       <div><div class="seg-label" style="margin-bottom:6px">Sharpness</div>
         <div class="seg" id="resSeg"><button type="button" data-v="2">Sharp</button><button type="button" data-v="1.25">Balanced</button><button type="button" data-v="1">Fastest</button></div></div>
+      <div><div class="seg-label" style="margin-bottom:6px">Controllers</div>
+        <div class="seg" id="padSeg"><button type="button" data-v="1">On</button><button type="button" data-v="0">Off (if the aim moves by itself)</button></div></div>
     </div>
     <button class="go ghost" id="fsBtn" type="button">Fullscreen</button>
     <button class="go" id="setDone" type="button">Done</button>
   </div>
 </div>
+<script src="sync.js"></script>
 <script>
 (() => {
 'use strict';
@@ -189,7 +211,11 @@ const WORLD_W = 2200, WORLD_H = 1500;
 const HOURS = ['12:00 AM', '1:00 AM', '2:00 AM', '3:00 AM', '4:00 AM', '5:00 AM'];
 const CONE = 0.5;       // half-angle of torch (radians)
 const RANGE = 520;      // torch reach
+const GUN_ORDER = ['pistol', 'shotgun', 'nailgun', 'flaregun'];
+const AMMO_OF = { pistol: 'ammo', shotgun: 'shells', nailgun: 'nails', flaregun: 'flareshell' };
 const GUNS = {
+  nailgun: { name: 'Nail gun', clip: 24, cd: 0.085, reload: 1.6, pellets: 1, spread: 0.07, speed: 1500, life: 0.45, noise: 450, kick: 1.5, kb: 50, pin: 0.4 },
+  flaregun: { name: 'Flare gun', clip: 1, cd: 0.5, reload: 1.25, pellets: 1, spread: 0.01, speed: 950, life: 0.8, noise: 700, kick: 7, kb: 220, fire: true },
   pistol:  { name: 'Pistol',  clip: 8, cd: 0.2,  reload: 1.15, pellets: 1, spread: 0.03, speed: 1300, life: 0.6,  noise: 800,  kick: 4,  kb: 320 },
   shotgun: { name: 'Shotgun', clip: 4, cd: 0.75, reload: 1.8,  pellets: 7, spread: 0.3,  speed: 1100, life: 0.32, noise: 1100, kick: 11, kb: 150 }
 };
@@ -201,7 +227,7 @@ const DIFF = {
 const MODES = { shift: 'Until dawn', endless: 'Endless night' };
 let vw = 0, vh = 0, dpr = 1;
 // player settings (volume, shake, sharpness), separate from difficulty/mode
-const settings = { vol: 0.8, shake: 1, res: 2 };
+const settings = { vol: 0.8, shake: 1, res: 2, pads: true };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('ward9-settings') || '{}')); } catch (e) {}
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, settings.res);
@@ -217,23 +243,31 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
 // ---------- Options + best scores ----------
-const opts = { diff: 'normal', mode: 'shift' };
+const opts = { diff: 'normal', mode: 'shift', map: 'ward' };
 try { Object.assign(opts, JSON.parse(localStorage.getItem('ward9-opts') || '{}')); } catch (e) {}
 if (!DIFF[opts.diff]) opts.diff = 'normal';
 if (!MODES[opts.mode]) opts.mode = 'shift';
+const MAPS = { ward: 'Ward Nine', basement: 'The Basement' };
+const MAP_DESC = { ward: 'The ward upstairs. Lamps in every room, the fuse box in the nurses\' station.', basement: 'Sub-level B: boiler, cold store, pipe tunnels. Hardly any lamps. Steam from the vents hides you. Something lives by the furnace.' };
+if (!MAPS[opts.map]) opts.map = 'ward';
+const isBase = () => opts.map === 'basement';
+const fuseName = () => isBase() ? 'generator' : 'fuse box';
 let D = DIFF[opts.diff];
-const bestKey = () => (opts.mode === 'shift' && opts.diff === 'normal') ? 'ward9-best' : 'ward9-best-' + opts.mode + '-' + opts.diff;
+const bestKey = () => ((opts.mode === 'shift' && opts.diff === 'normal') ? 'ward9-best' : 'ward9-best-' + opts.mode + '-' + opts.diff) + (isBase() ? '-basement' : '');
 let best = 0;
 function loadBest() { best = 0; try { best = +(localStorage.getItem(bestKey()) || 0); } catch (e) {} }
-function showBest() { $('bestTxt').textContent = best ? 'Best score ' + best + ' · ' + D.name + ' · ' + MODES[opts.mode] : ''; }
+function showBest() { $('bestTxt').textContent = best ? 'Best score ' + best + ' · ' + MAPS[opts.map] + ' · ' + D.name + ' · ' + MODES[opts.mode] : ''; }
 function syncSeg() {
   for (const b of $('diffSeg').children) b.setAttribute('aria-pressed', String(b.dataset.v === opts.diff));
   for (const b of $('modeSeg').children) b.setAttribute('aria-pressed', String(b.dataset.v === opts.mode));
+  for (const b of $('mapSeg').children) b.setAttribute('aria-pressed', String(b.dataset.v === opts.map));
+  $('mapDesc').textContent = MAP_DESC[opts.map];
   D = DIFF[opts.diff]; loadBest(); showBest();
   try { localStorage.setItem('ward9-opts', JSON.stringify(opts)); } catch (e) {}
 }
 $('diffSeg').addEventListener('click', e => { const v = e.target.dataset && e.target.dataset.v; if (v) { opts.diff = v; syncSeg(); } });
 $('modeSeg').addEventListener('click', e => { const v = e.target.dataset && e.target.dataset.v; if (v) { opts.mode = v; syncSeg(); } });
+$('mapSeg').addEventListener('click', e => { const v = e.target.dataset && e.target.dataset.v; if (v && v !== opts.map) { opts.map = v; syncSeg(); if (state === 'menu') { newGame(); $('message').classList.remove('show'); enemies = []; toSpawn = []; ev = null; } } });
 syncSeg();
 const hourLabel = n => n < HOURS.length ? HOURS[n] : 'Night ' + (Math.floor(n / 6) + 1) + ' · ' + HOURS[n % 6];
 
@@ -290,7 +324,10 @@ const sfx = {
   fuse() { noise(0.3, 2000, 1, 0.45); tone('square', 200, 60, 0.3, 0.1); },
   spark() { noise(0.04, 3000, 2, 0.12); },
   split() { noise(0.25, 400, 3, 0.4); tone('sine', 300, 120, 0.2, 0.15); },
-  step(run) { noise(0.05, run ? 500 : 320, 1.5, run ? 0.1 : 0.035); }
+  step(run) { noise(0.05, run ? 500 : 320, 1.5, run ? 0.1 : 0.035); },
+  nail() { noise(0.05, 2400, 1.2, 0.35); tone('square', 900, 400, 0.03, 0.05); },
+  steam(v) { noise(0.5, 3500, 0.3, 0.12 * v); },
+  scrape(v) { noise(0.25, 700, 3, 0.18 * v); tone('sawtooth', 160, 120, 0.2, 0.02 * v); }
 };
 
 // ---------- Input ----------
@@ -307,6 +344,8 @@ window.addEventListener('keydown', e => {
     if (k === 'q') switchGun();
     if (k === '1') switchGun('pistol');
     if (k === '2') switchGun('shotgun');
+    if (k === '3') switchGun('nailgun');
+    if (k === '4') switchGun('flaregun');
     if (k === 'g') throwFlare();
     if (k === 'escape' || k === 'p') setPaused(true);
   } else if (state === 'paused' && (k === 'escape' || k === 'p')) setPaused(false);
@@ -344,6 +383,7 @@ const endTouch = e => {
 };
 cv.addEventListener('touchend', endTouch); cv.addEventListener('touchcancel', endTouch);
 $('tReload').addEventListener('click', () => state === 'play' && startReload());
+$('tPause').addEventListener('click', () => setPaused(true));
 $('tLight').addEventListener('click', () => state === 'play' && toggleLight());
 $('tGun').addEventListener('click', () => switchGun());
 $('tFlare').addEventListener('click', () => throwFlare());
@@ -354,12 +394,80 @@ useBtn.addEventListener('touchend', () => { useHeld = false; });
 useBtn.addEventListener('touchcancel', () => { useHeld = false; });
 useBtn.addEventListener('mousedown', () => { useHeld = true; });
 
+// ---------- Controller ----------
+// Standard-mapping pads only: wheels, flight sticks and pedals rest with axes off-centre and used to
+// spin the aim, so they're skipped, and an axis only counts once it has been seen centred.
+const BAD_PAD = /wheel|joystick|flight|pedal|tablet|throttle|rudder|hotas|stick|g29|g920|t300|wacom/i;
+const pad = { lx: 0, ly: 0, rx: 0, ry: 0, fire: false };
+const padSt = {};
+let padMode = false, padIdx = -1, padHeld = {};
+function padRelease() { for (const k in padHeld) if (padHeld[k]) keys[k] = false; padHeld = {}; pad.lx = pad.ly = pad.rx = pad.ry = 0; pad.fire = false; padMode = false; document.body.classList.remove('is-pad'); }
+// hold a keyboard key from a pad button (only releases what the pad pressed)
+function padKey(k, on) { if (on) { keys[k] = true; padHeld[k] = true; } else if (padHeld[k]) { keys[k] = false; padHeld[k] = false; } }
+function menuFocus(dir) {
+  const box = [...document.querySelectorAll('.overlay')].find(o => !o.hidden);
+  if (!box) return;
+  const list = [...box.querySelectorAll('button, input[type=range]')].filter(b => b.offsetParent && !b.disabled && b.style.display !== 'none');
+  if (!list.length) return;
+  const i = list.indexOf(document.activeElement);
+  list[i < 0 ? 0 : (i + dir + list.length) % list.length].focus();
+}
+function pollPad(dt) {
+  if (!settings.pads || !navigator.getGamepads) return;
+  let cur = null;
+  for (const g of navigator.getGamepads()) {
+    if (!g || !g.connected || g.mapping !== 'standard' || BAD_PAD.test(g.id)) continue;
+    const st = padSt[g.index] || (padSt[g.index] = { c: g.axes.map(() => false), prev: g.buttons.map(() => true), navT: 0 });
+    g.axes.forEach((v, i) => { if (Math.abs(v) < 0.2) st.c[i] = true; });
+    const fresh = g.buttons.some((b, i) => b.pressed && !st.prev[i]), moved = g.axes.some((v, i) => st.c[i] && Math.abs(v) > 0.5);
+    if (fresh || moved) { padIdx = g.index; if (!padMode) { padMode = true; document.body.classList.add('is-pad'); } }
+    if (g.index === padIdx) cur = { g, st }; else st.prev = g.buttons.map(b => b.pressed);
+  }
+  if (!cur) return;
+  const { g, st } = cur;
+  const ax = i => (st.c[i] && Math.abs(g.axes[i] || 0) > 0.18 ? g.axes[i] : 0);
+  const btn = i => !!(g.buttons[i] && g.buttons[i].pressed);
+  const prev = st.prev; st.prev = g.buttons.map(b => b.pressed);
+  const hit = i => btn(i) && !prev[i];
+  if (state !== 'play') {
+    pad.lx = pad.ly = pad.rx = pad.ry = 0; pad.fire = false; padKey('e', false); padKey('shift', false);
+    // menus: D-pad / left stick moves between buttons, A presses, B backs out, left/right nudge a slider
+    const ly = ax(1), f = document.activeElement;
+    st.navT -= dt;
+    if (hit(12)) menuFocus(-1); else if (hit(13)) menuFocus(1);
+    else if (Math.abs(ly) > 0.6 && st.navT <= 0) { menuFocus(ly < 0 ? -1 : 1); st.navT = 0.25; }
+    else if (Math.abs(ly) < 0.3) st.navT = 0;
+    if (f && f.type === 'range' && (hit(14) || hit(15))) { f.value = +f.value + (hit(15) ? 1 : -1) * (+f.step || 0.05); f.dispatchEvent(new Event('input')); f.dispatchEvent(new Event('change')); }
+    else if (hit(14)) menuFocus(-1); else if (hit(15)) menuFocus(1);
+    if (hit(0)) { if (f && f.tagName === 'BUTTON' && f.offsetParent) f.click(); else menuFocus(0); }
+    if (hit(1)) { if (setFrom) closeSettings(); else if (state === 'paused') setPaused(false); }
+    if (hit(9) && state === 'paused') setPaused(false);
+    return;
+  }
+  pad.lx = ax(0); pad.ly = ax(1); pad.rx = ax(2); pad.ry = ax(3);
+  pad.fire = btn(7);
+  padKey('e', btn(0));                // A (hold): fix the fuse box
+  padKey('shift', btn(6) || btn(10)); // LT / L3: sprint
+  if (hit(2)) startReload();          // X
+  if (hit(3)) switchGun();            // Y
+  if (hit(1)) throwFlare();           // B
+  if (hit(4) || hit(5)) toggleLight(); // LB / RB
+  if (hit(9)) setPaused(true);        // Start
+}
+// keyboard or mouse again: back to keyboard prompts
+window.addEventListener('keydown', () => { if (padMode) { padMode = false; document.body.classList.remove('is-pad'); } });
+cv.addEventListener('mousemove', () => { if (padMode && !pad.rx && !pad.ry) { padMode = false; document.body.classList.remove('is-pad'); } });
+
 // ---------- World ----------
 // Layout: a corridor across the middle, four rooms above and four below.
 const DOOR = 120, WT = 20, ROOM_W = 550, ROOM_H = 630;
 const COR_Y0 = 650, COR_Y1 = 850;
 let walls = [], segs = [], rooms = [], lamps = [], floorCv = null, floorCtx = null, liftPos, fusePos;
 const ROOM_KINDS = ['ward', 'ward', 'ward', 'morgue', 'theatre', 'nurses', 'storage', 'lift'];
+const BASE_KINDS = ['boiler', 'coldstore', 'laundry', 'tunnel', 'tunnel', 'generator', 'storage', 'lift'];
+const ROOM_NAMES = { morgue: 'Morgue', theatre: 'Theatre', nurses: "Nurses' station", storage: 'Storage', lift: 'Lift',
+  boiler: 'Boiler room', coldstore: 'Cold store', laundry: 'Laundry', generator: 'Generator', tunnel: 'Pipe tunnels' };
+let vents = []; // basement steam vents: { x, y, t (to next change), on }
 function hWall(y, x0, x1, gaps) {
   let x = x0;
   for (const g of gaps.slice().sort((a, b) => a - b)) { const a = g - DOOR / 2; if (a > x) walls.push({ x, y, w: a - x, h: WT, kind: 'wall' }); x = g + DOOR / 2; }
@@ -398,19 +506,43 @@ function furnish(room) {
   } else if (k === 'lift') {
     put(room, 195, 0, 160, 30, 'lift');
     put(room, 40, 250, 120, 30, 'bench'); put(room, 390, 250, 120, 30, 'bench');
+  } else if (k === 'boiler') {
+    put(room, 175, 120, 200, 190, 'boiler');
+    put(room, 20, 40, 24, 420, 'pipe'); put(room, 506, 40, 24, 420, 'pipe');
+    put(room, 90, 0, 370, 24, 'pipe');
+    vents.push(roomPt(room, 275, 400), roomPt(room, 110, 230));
+  } else if (k === 'coldstore') {
+    put(room, 30, 0, 480, 30, 'drawers'); put(room, 0, 60, 30, 400, 'drawers'); put(room, 520, 60, 30, 400, 'drawers');
+    for (const rx of [120, 240, 360]) if (Math.random() < 0.85) put(room, rx, 160 + rand(-20, 20), 50, 120, 'slab', { body: Math.random() < 0.6 });
+  } else if (k === 'laundry') {
+    for (const rx of [40, 120, 200, 330, 410]) put(room, rx, 0, 64, 64, 'washer');
+    put(room, 150, 240, 250, 40, 'counter');
+    for (let i = 0; i < 3; i++) put(room, rand(60, 450), rand(330, 460), 44, 44, 'cart');
+    vents.push(roomPt(room, 275, 170));
+  } else if (k === 'tunnel') {
+    // a little maze of pipe runs with gaps you can slip through
+    put(room, 0, 150, 200, 24, 'pipe'); put(room, 320, 150, 230, 24, 'pipe');
+    put(room, 120, 300, 310, 24, 'pipe');
+    put(room, 0, 450, 160, 24, 'pipe'); put(room, 300, 450, 250, 24, 'pipe');
+    put(room, 260, 0, 24, 110, 'pipe');
+    vents.push(roomPt(room, 420, 380));
+  } else if (k === 'generator') {
+    put(room, 175, 40, 200, 90, 'genset');
+    put(room, 40, 250, 40, 160, 'crate'); put(room, 470, 250, 40, 160, 'crate');
   }
 }
 function lampSpot(room) {
-  const ry = { ward: 225, morgue: 250, theatre: 420, nurses: 470, storage: 450, lift: 330 }[room.kind];
+  const ry = { ward: 225, morgue: 250, theatre: 420, nurses: 470, storage: 450, lift: 330, boiler: 420, coldstore: 350, laundry: 300, tunnel: 240, generator: 300 }[room.kind];
   return roomPt(room, 275, ry);
 }
 function buildWorld() {
-  walls = []; rooms = []; lamps = [];
-  const kinds = ROOM_KINDS.slice().sort(() => Math.random() - 0.5);
+  walls = []; rooms = []; lamps = []; vents = [];
+  const base = isBase();
+  const kinds = (base ? BASE_KINDS : ROOM_KINDS).slice().sort(() => Math.random() - 0.5);
   let wardN = 0;
   for (let i = 0; i < 8; i++) {
     const top = i < 4, c = i % 4, kind = kinds[i];
-    const name = kind === 'ward' ? 'Ward 9' + 'ABC'[wardN++] : { morgue: 'Morgue', theatre: 'Theatre', nurses: "Nurses' station", storage: 'Storage', lift: 'Lift' }[kind];
+    const name = kind === 'ward' ? 'Ward 9' + 'ABC'[wardN++] : ROOM_NAMES[kind];
     rooms.push({ x: c * ROOM_W, y: top ? 0 : COR_Y1 + WT, top, kind, name, cx: c * ROOM_W + ROOM_W / 2 });
   }
   const doors = [0, 1, 2, 3].map(c => c * ROOM_W + ROOM_W / 2);
@@ -424,14 +556,17 @@ function buildWorld() {
     vWall(c * ROOM_W - WT / 2, COR_Y1 + WT, WORLD_H, botGaps.includes(c) ? [COR_Y1 + WT + ROOM_H - 520] : []);
   }
   rooms.forEach(furnish);
-  // corridor gurneys along the walls, away from the doors and the start
-  for (let i = 0; i < 4; i++) {
+  // corridor clutter along the walls, away from the doors and the start: gurneys upstairs, pipe runs in the basement
+  for (let i = 0; i < (base ? 6 : 4); i++) {
     const x = rand(60, WORLD_W - 150);
     if (doors.some(d => Math.abs(x + 45 - d) < 130) || Math.abs(x + 45 - WORLD_W / 2) < 160) continue;
-    walls.push({ x, y: Math.random() < 0.5 ? COR_Y0 + 6 : COR_Y1 - 40, w: 90, h: 34, kind: 'cart' });
+    if (base) walls.push({ x, y: Math.random() < 0.5 ? COR_Y0 + 4 : COR_Y1 - 28, w: rand(90, 160), h: 24, kind: 'pipe' });
+    else walls.push({ x, y: Math.random() < 0.5 ? COR_Y0 + 6 : COR_Y1 - 40, w: 90, h: 34, kind: 'cart' });
   }
+  if (base) for (const x of [WORLD_W * 0.2, WORLD_W * 0.8]) vents.push({ x, y: (COR_Y0 + COR_Y1) / 2 + rand(-40, 40) });
+  vents = vents.map(v => ({ x: v.x, y: v.y, t: rand(1, 7), on: false }));
   const lift = rooms.find(r => r.kind === 'lift'); liftPos = roomPt(lift, 275, 80);
-  const nurses = rooms.find(r => r.kind === 'nurses'); fusePos = roomPt(nurses, 275, 8);
+  const nurses = rooms.find(r => r.kind === (base ? 'generator' : 'nurses')); fusePos = roomPt(nurses, 275, 8);
 
   segs = [];
   const addRect = (x, y, w, h) => { segs.push([x, y, x + w, y], [x + w, y, x + w, y + h], [x + w, y + h, x, y + h], [x, y + h, x, y]); };
@@ -439,7 +574,9 @@ function buildWorld() {
   addRect(0, 0, WORLD_W, WORLD_H);
 
   // ceiling lamps (only lit while the power is on)
-  const spots = rooms.map(lampSpot).concat(doors.map(x => ({ x, y: (COR_Y0 + COR_Y1) / 2 })));
+  const spots = base
+    ? rooms.filter(r => ['boiler', 'generator', 'lift'].includes(r.kind)).map(lampSpot).concat([doors[0], doors[2]].map(x => ({ x, y: (COR_Y0 + COR_Y1) / 2 })))
+    : rooms.map(lampSpot).concat(doors.map(x => ({ x, y: (COR_Y0 + COR_Y1) / 2 })));
   for (const s of spots) {
     let tries = 0; while (solidAt(s.x, s.y) && tries++ < 20) s.y += s.y < WORLD_H / 2 ? 20 : -20;
     lamps.push({ x: s.x, y: s.y, r: 300, poly: polyPts(s.x, s.y, 0, Math.PI * 2, 56, 300) });
@@ -457,8 +594,10 @@ function buildWorld() {
       g.fillRect(x + 1, y + 1, Math.min(T, x0 + w - x) - 2, Math.min(T, y0 + h - y) - 2);
     }
   };
-  const FLOOR = { ward: [[44, 47, 46], [36, 39, 38]], morgue: [[38, 46, 52], [31, 38, 44]], theatre: [[36, 50, 44], [30, 42, 37]], nurses: [[48, 44, 40], [40, 37, 34]], storage: [[40, 38, 34], [34, 32, 29]], lift: [[42, 42, 46], [35, 35, 39]] };
-  tiles(0, COR_Y0, WORLD_W, COR_Y1 - COR_Y0, 40, [46, 42, 36], [41, 38, 33]);
+  const FLOOR = { boiler: [[40, 34, 30], [34, 29, 26]], coldstore: [[36, 44, 50], [30, 37, 42]], laundry: [[44, 44, 42], [37, 37, 35]], tunnel: [[34, 36, 33], [29, 31, 28]], generator: [[42, 40, 32], [35, 33, 27]],
+    ward: [[44, 47, 46], [36, 39, 38]], morgue: [[38, 46, 52], [31, 38, 44]], theatre: [[36, 50, 44], [30, 42, 37]], nurses: [[48, 44, 40], [40, 37, 34]], storage: [[40, 38, 34], [34, 32, 29]], lift: [[42, 42, 46], [35, 35, 39]] };
+  if (base) tiles(0, COR_Y0, WORLD_W, COR_Y1 - COR_Y0, 80, [38, 38, 36], [35, 35, 33]); // bare concrete
+  else tiles(0, COR_Y0, WORLD_W, COR_Y1 - COR_Y0, 40, [46, 42, 36], [41, 38, 33]);
   for (const r of rooms) tiles(r.x, r.y, ROOM_W, ROOM_H, 50, FLOOR[r.kind][0], FLOOR[r.kind][1]);
   for (let i = 0; i < 80; i++) { // old stains
     g.fillStyle = `rgba(${rand(40, 70) | 0},${rand(30, 45) | 0},20,${rand(0.08, 0.2)})`;
@@ -468,10 +607,15 @@ function buildWorld() {
   g.fillStyle = 'rgba(200,190,160,0.08)'; g.font = '700 40px "JetBrains Mono", monospace';
   for (const r of rooms) g.fillText(r.name.toUpperCase(), r.cx, r.top ? 575 : COR_Y1 + WT + 55);
   g.fillStyle = 'rgba(200,190,160,0.06)'; g.font = '700 110px "JetBrains Mono", monospace';
-  g.fillText('WARD 9', WORLD_W / 2, (COR_Y0 + COR_Y1) / 2);
+  g.fillText(base ? 'SUB-LEVEL B' : 'WARD 9', WORLD_W / 2, (COR_Y0 + COR_Y1) / 2);
+  for (const v of vents) { // floor grates
+    g.fillStyle = '#1c1d1e'; g.fillRect(v.x - 22, v.y - 22, 44, 44);
+    g.fillStyle = '#3a3c3e'; for (let i = -18; i <= 14; i += 8) g.fillRect(v.x - 18, v.y + i, 36, 4);
+  }
   g.fillStyle = 'rgba(242,196,109,0.12)'; // painted arrow to the fuse box
   g.font = '700 22px "JetBrains Mono", monospace';
-  g.fillText(nurses.top ? '▲ FUSE BOX' : '▼ FUSE BOX', nurses.cx, nurses.top ? COR_Y0 + 24 : COR_Y1 - 24);
+  const fl = fuseName().toUpperCase();
+  g.fillText(nurses.top ? '▲ ' + fl : '▼ ' + fl, nurses.cx, nurses.top ? COR_Y0 + 24 : COR_Y1 - 24);
 }
 function bloodDecal(x, y, size) {
   const g = floorCtx;
@@ -617,12 +761,20 @@ const TYPES = {
   splitter: { r: 22, hp: 4,  speed: 80,  dmg: 16, color: '#15100b', pts: 30,  eye: '240,150,40' },
   mite:     { r: 9,  hp: 1,  speed: 205, dmg: 7,  color: '#1a130c', pts: 5,   eye: '240,150,40' },
   screamer: { r: 15, hp: 3,  speed: 125, dmg: 8,  color: '#2b2427', pts: 40,  eye: '190,215,255' },
-  boss:     { r: 42, hp: 70, speed: 58,  dmg: 34, color: '#1c090b', pts: 600, eye: '255,60,40' }
+  boss:     { r: 42, hp: 70, speed: 58,  dmg: 34, color: '#1c090b', pts: 600, eye: '255,60,40' },
+  // new: crawls through the ceiling vents (unseen, ignores walls) and drops on you
+  crawler:  { r: 14, hp: 3,  speed: 150, dmg: 16, color: '#120c0a', pts: 35,  eye: '190,255,120' },
+  // new: sits there looking like a pickup until you come close
+  faker:    { r: 15, hp: 4,  speed: 185, dmg: 20, color: '#1b1210', pts: 45,  eye: '255,90,80' }
 };
+// the basement's boss is the Stoker: same slot as the Ward Sister, its own look and a ground slam instead of the charge
+const STOKER = { color: '#1d1108', eye: '255,150,40' };
+const bossName = () => isBase() ? 'The Stoker' : 'The Ward Sister';
 function newGame() {
   buildWorld();
   P = { x: WORLD_W / 2, y: (COR_Y0 + COR_Y1) / 2, r: 14, a: 0, hp: 100, bat: 100, batMax: 100, beam: 1, light: true,
-        gun: 'pistol', ammo: { pistol: { clip: 8, reserve: 32 }, shotgun: { clip: 0, reserve: 0 } }, hasShotgun: false,
+        gun: 'pistol', ammo: { pistol: { clip: 8, reserve: 32 }, shotgun: { clip: 0, reserve: 0 }, nailgun: { clip: 0, reserve: 0 }, flaregun: { clip: 0, reserve: 0 } },
+        owned: { pistol: true }, steam: false, steamTold: false,
         reload: 0, cd: 0, inv: 0, sta: 100, winded: false, flares: D.flares, daze: 0 };
   enemies = []; bullets = []; parts = []; pickups = []; flares = []; pending = [];
   cam = { x: P.x - vw / 2, y: P.y - vh / 2 }; shake = 0; flash = 0; score = 0; kills = 0; beatT = 0; hurtFx = 0; elapsed = 0;
@@ -637,7 +789,8 @@ function pickType(n, screamers) {
     ['thin', n >= 1 ? 1.4 + n * 0.6 : 0],
     ['splitter', n >= 2 ? 1 + n * 0.35 : 0],
     ['brute', n >= 2 ? 0.5 + n * 0.3 : 0],
-    ['screamer', n >= 3 && screamers < 2 + (n > 8 ? 1 : 0) ? 0.7 + n * 0.1 : 0]
+    ['screamer', n >= 3 && screamers < 2 + (n > 8 ? 1 : 0) ? 0.7 + n * 0.1 : 0],
+    ['crawler', n >= 2 ? 0.7 + n * 0.15 + (isBase() ? 0.6 : 0) : 0]
   ];
   let r = Math.random() * w.reduce((s, x) => s + x[1], 0);
   for (const [t, v] of w) if ((r -= v) < 0) return t;
@@ -653,10 +806,16 @@ function nextHour() {
   for (let i = 0; i < count; i++) { const t = pickType(n, scr); if (t === 'screamer') scr++; toSpawn.push(t); }
   if (bossHour) toSpawn.splice(Math.min(3, toSpawn.length), 0, 'boss');
   spawnT = 2.5; breakT = 0; fuseReady = true;
+  enemies = enemies.filter(e => !e.disguise); // fakers nobody fell for slink off at the hour
   for (let i = 0; i < 2; i++) dropPickup('battery', freeSpot(150));
-  dropPickup('ammo', freeSpot(150)); dropPickup(P.hasShotgun ? 'shells' : 'ammo', freeSpot(150));
+  dropPickup('ammo', freeSpot(150)); dropPickup(ammoDrop(), freeSpot(150));
+  // fakers: from 1 AM, one or two things that look like pickups
+  if (n >= 1) for (let i = 0; i < (n >= 4 ? 2 : 1); i++) { const sp = freeSpot(420), f = makeEnemy('faker', sp.x, sp.y, false); f.disguise = true; f.fakeKind = pick(['med', 'battery', 'ammo']); enemies.push(f); }
+  // new guns lying around: the nail gun from 2 AM, the flare gun from 3 AM
+  if (n >= 2 && !P.owned.nailgun && !pickups.some(q => q.kind === 'nailgun')) dropPickup('nailgun', freeSpotIn(pick(rooms.filter(r => r.kind !== 'lift'))));
+  if (n >= 3 && !P.owned.flaregun && !pickups.some(q => q.kind === 'flaregun')) dropPickup('flaregun', freeSpotIn(pick(rooms.filter(r => r.kind !== 'lift'))));
   if (n > 0) { dropPickup('med', freeSpot(200)); dropPickup('flare', freeSpot(200)); }
-  if (n >= 1 && !P.hasShotgun && !pickups.some(p => p.kind === 'shotgun')) dropPickup('shotgun', freeSpotIn(rooms.find(r => r.kind === 'storage')));
+  if (n >= 1 && !P.owned.shotgun && !pickups.some(p => p.kind === 'shotgun')) dropPickup('shotgun', freeSpotIn(rooms.find(r => r.kind === 'storage')));
   if (n >= 1 && (n <= 4 || Math.random() < 0.5)) {
     const kind = n % 2 ? 'cell' : 'bulb';
     if ((kind === 'cell' && P.batMax < 200) || (kind === 'bulb' && P.beam < 1.45)) dropPickup(kind, freeSpot(300));
@@ -672,14 +831,42 @@ function makeEnemy(type, x, y, aware) {
   const hp = type === 'mite' ? 1 : T.hp * hpMul * D.hp;
   return { type, x, y, r: T.r, hp, max: hp, speed: T.speed * (1 + Math.min(hour, 12) * 0.05) * D.spd, lit: false, atk: 0,
            wob: rand(0, 6), kb: { x: 0, y: 0 }, seen: false, aware: aware ? 8 : 0, age: 0, wa: rand(0, 7), scr: rand(3, 6),
-           chg: 3, wind: 0, dash: 0, dx: 0, dy: 0, stun: 0, lx: x, ly: y, stuckT: 0, side: 0, bestF: 65535, progT: 0 };
+           chg: 3, wind: 0, dash: 0, dx: 0, dy: 0, stun: 0, lx: x, ly: y, stuckT: 0, side: 0, bestF: 65535, progT: 0,
+           pin: 0, burn: 0, inVent: type === 'crawler', vent: rand(4, 9), scrape: 0, stoker: type === 'boss' && isBase() };
+}
+// an ammo pickup for one of the guns you have (pistol most often)
+function ammoDrop() {
+  const own = GUN_ORDER.filter(g => P.owned[g] && g !== 'pistol');
+  return own.length && Math.random() < 0.55 ? AMMO_OF[pick(own)] : 'ammo';
+}
+function reveal(e) { // a faker springs up
+  e.disguise = false; e.aware = 10; e.pin = 0.35; sfx.shriek(); shake = Math.max(shake, 8);
+  for (let i = 0; i < 10; i++) parts.push({ x: e.x, y: e.y, vx: rand(-150, 150), vy: rand(-150, 150), life: 0.4, c: '#3a2a20', s: 3 });
+  note('That was no ' + ({ med: 'bandage', battery: 'battery', ammo: 'ammo' }[e.fakeKind] || 'pickup'));
+}
+function dropFromVent(e) { // a crawler comes down through the ceiling
+  e.inVent = false; resolve(e); e.aware = 10; e.pin = 0.3;
+  sfx.thud(); shake = Math.max(shake, 6); note('Something dropped from the vents');
+  for (let i = 0; i < 14; i++) parts.push({ x: e.x + rand(-20, 20), y: e.y + rand(-20, 20), vx: rand(-60, 60), vy: rand(-60, 60), life: rand(0.4, 0.9), c: '#6b6458', s: rand(2, 4) });
+}
+function slam(e) { // the Stoker's ground slam: hurts and shoves you nearby, snuffs out flares
+  sfx.thud(); sfx.roar(); shake = Math.max(shake, 16);
+  for (let i = 0; i < 40; i++) { const a = i / 40 * Math.PI * 2; parts.push({ x: e.x, y: e.y, vx: Math.cos(a) * 380, vy: Math.sin(a) * 380, life: 0.45, c: i % 2 ? '#ff8a2a' : '#5a3a20', s: 4 }); }
+  for (const f of flares) if (f.landed && Math.hypot(f.x - e.x, f.y - e.y) < 260) f.burn = Math.min(f.burn, 0.6);
+  const dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy) || 1;
+  if (d < 190 && P.inv === 0) {
+    P.hp -= 22 * D.dmg; P.inv = 0.5; hurtFx = 1; sfx.hurt();
+    for (let k = 0; k < 8; k++) { P.x += dx / d * 9; P.y += dy / d * 9; resolve(P); }
+    if (P.hp <= 0) lose();
+  }
 }
 function spawnEnemy(type) {
   if (type === 'boss') {
     const e = makeEnemy('boss', liftPos.x, liftPos.y, true);
     enemies.push(e); boss = e;
     sfx.ding(); setTimeout(sfx.roar, 700);
-    showMsg('Something came up in the lift'); shake = 10;
+    showMsg(e.stoker ? 'Something climbed out of the furnace' : 'Something came up in the lift'); shake = 10;
+    $('bossName').textContent = bossName();
     $('hudBoss').hidden = false;
     return;
   }
@@ -693,8 +880,9 @@ function makeNoise(r) { for (const e of enemies) if (Math.hypot(e.x - P.x, e.y -
 function toggleLight() { if (P.bat <= 0) { sfx.click(); return; } P.light = !P.light; sfx.click(); }
 function switchGun(to) {
   if (state !== 'play') return;
-  const next = to || (P.gun === 'pistol' ? 'shotgun' : 'pistol');
-  if (next === 'shotgun' && !P.hasShotgun) { note('No shotgun yet. Look in Storage'); return; }
+  const own = GUN_ORDER.filter(g => P.owned[g]);
+  const next = to || own[(own.indexOf(P.gun) + 1) % own.length];
+  if (!P.owned[next]) { note(next === 'shotgun' ? 'No shotgun yet. Look in ' + (isBase() ? 'Stores' : 'Storage') : 'No ' + GUNS[next].name.toLowerCase() + ' yet'); return; }
   if (next === P.gun) return;
   P.gun = next; P.reload = 0; P.cd = 0.3; sfx.click(); note(GUNS[next].name);
 }
@@ -708,16 +896,23 @@ function tryShoot() {
   initAudio();
   if (P.cd > 0 || P.reload > 0) return;
   const g = GUNS[P.gun], a = P.ammo[P.gun];
-  if (a.clip === 0) { sfx.empty(); P.cd = 0.25; if (a.reserve > 0) startReload(); else note('Out of ' + (P.gun === 'shotgun' ? 'shells' : 'ammo')); return; }
+  if (a.clip === 0) { sfx.empty(); P.cd = 0.25; if (a.reserve > 0) startReload(); else note('Out of ' + ({ shotgun: 'shells', nailgun: 'nails', flaregun: 'flare shells' }[P.gun] || 'ammo')); return; }
   a.clip--; P.cd = g.cd;
   for (let i = 0; i < g.pellets; i++) {
     const ang = P.a + rand(-g.spread, g.spread), sp = g.speed * rand(0.85, 1);
-    bullets.push({ x: P.x + Math.cos(ang) * 4, y: P.y + Math.sin(ang) * 4, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: g.life * rand(0.85, 1), kb: g.kb, fresh: true });
+    bullets.push({ x: P.x + Math.cos(ang) * 4, y: P.y + Math.sin(ang) * 4, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: g.life * rand(0.85, 1), kb: g.kb, fresh: true, pin: g.pin || 0, fire: !!g.fire, gun: P.gun });
   }
-  flash = P.gun === 'shotgun' ? 0.1 : 0.06; shake = Math.max(shake, g.kick);
-  P.gun === 'shotgun' ? sfx.shotgun() : sfx.shot();
+  flash = P.gun === 'shotgun' ? 0.1 : P.gun === 'nailgun' ? 0.02 : 0.06; shake = Math.max(shake, g.kick);
+  if (P.gun === 'shotgun') sfx.shotgun(); else if (P.gun === 'nailgun') sfx.nail(); else if (P.gun === 'flaregun') { sfx.shot(); sfx.flare(); } else sfx.shot();
   makeNoise(g.noise);
   if (a.clip === 0 && a.reserve > 0) setTimeout(startReload, 180);
+}
+// a flare shell bursting: a smaller, shorter flare that also sets nearby monsters alight
+function flareAt(x, y) {
+  if (flares.some(f => f.shell && Math.hypot(f.x - x, f.y - y) < 20)) return;
+  const f = { x, y, vx: 0, vy: 0, fly: 0, burn: 6, rad: 200, landed: true, shell: true, poly: polyPts(x, y, 0, Math.PI * 2, 48, 200) };
+  flares.push(f); sfx.flare(); makeNoise(400);
+  for (const e of enemies) if (!e.inVent && !e.disguise && Math.hypot(e.x - x, e.y - y) < 90 + e.r) e.burn = Math.max(e.burn, 2.5);
 }
 function throwFlare() {
   if (state !== 'play') return;
@@ -772,8 +967,8 @@ function runEvent(k) {
 function update(dt) {
   elapsed += dt;
   // player move
-  let mx = (keys['d'] || keys['arrowright'] ? 1 : 0) - (keys['a'] || keys['arrowleft'] ? 1 : 0) + stick.dx;
-  let my = (keys['s'] || keys['arrowdown'] ? 1 : 0) - (keys['w'] || keys['arrowup'] ? 1 : 0) + stick.dy;
+  let mx = (keys['d'] || keys['arrowright'] ? 1 : 0) - (keys['a'] || keys['arrowleft'] ? 1 : 0) + stick.dx + pad.lx;
+  let my = (keys['s'] || keys['arrowdown'] ? 1 : 0) - (keys['w'] || keys['arrowup'] ? 1 : 0) + stick.dy + pad.ly;
   const ml = Math.hypot(mx, my);
   if (ml > 1) { mx /= ml; my /= ml; }
   const moving = ml > 0.1;
@@ -790,6 +985,8 @@ function update(dt) {
 
   cam.x += (P.x - vw / 2 - cam.x) * Math.min(1, dt * 8);
   cam.y += (P.y - vh / 2 - cam.y) * Math.min(1, dt * 8);
+  // right stick aims: the crosshair goes out along it (and stays put when the stick is let go)
+  if (Math.hypot(pad.rx, pad.ry) > 0.35) { const a = Math.atan2(pad.ry, pad.rx), r = Math.min(vw, vh) * 0.28; mouse.x = P.x - cam.x + Math.cos(a) * r; mouse.y = P.y - cam.y + Math.sin(a) * r; }
   P.a = Math.atan2(mouse.y + cam.y - P.y, mouse.x + cam.x - P.x);
 
   P.cd = Math.max(0, P.cd - dt); P.inv = Math.max(0, P.inv - dt);
@@ -798,7 +995,7 @@ function update(dt) {
     P.reload -= dt;
     if (P.reload <= 0) { const g = GUNS[P.gun], a = P.ammo[P.gun], n = Math.min(g.clip - a.clip, a.reserve); a.clip += n; a.reserve -= n; P.reload = 0; }
   }
-  if (mouse.down && isTouch) tryShoot();
+  if ((mouse.down && isTouch) || pad.fire) tryShoot();
   if (P.light && P.daze <= 0) { P.bat -= dt * 3.2 * D.drain; if (P.bat <= 0) { P.bat = 0; P.light = false; note('Torch is dead'); } }
 
   // fuse box
@@ -806,16 +1003,28 @@ function update(dt) {
   let prompt = '';
   if (nearFuse && power <= 0 && fuseReady) {
     if (keys['e'] || useHeld) {
-      fixP += dt / 2.6; prompt = 'Fixing the fuse box… ' + Math.floor(fixP * 100) + '%';
+      fixP += dt / 2.6; prompt = 'Fixing the ' + fuseName() + '… ' + Math.floor(fixP * 100) + '%';
       if (Math.random() < dt * 8) { sfx.spark(); for (let i = 0; i < 3; i++) parts.push({ x: fusePos.x, y: fusePos.y, vx: rand(-90, 90), vy: rand(-90, 90), life: 0.25, c: '#ffe39a', s: 2 }); }
-      if (fixP >= 1) { power = 22; fuseReady = false; fixP = 0; showMsg('Power restored'); sfx.power(); makeNoise(700); }
-    } else { fixP = Math.max(0, fixP - dt * 0.5); prompt = (isTouch ? 'Hold USE' : 'Hold E') + ' to fix the fuse box'; }
+      if (fixP >= 1) { power = 22; fuseReady = false; fixP = 0; showMsg(isBase() ? 'The generator coughs into life' : 'Power restored'); sfx.power(); makeNoise(700); }
+    } else { fixP = Math.max(0, fixP - dt * 0.5); prompt = (padMode ? 'Hold A' : isTouch ? 'Hold USE' : 'Hold E') + ' to fix the ' + fuseName(); }
   } else {
     fixP = 0;
     if (nearFuse && power <= 0 && !fuseReady) prompt = 'Burnt out. Try again next hour';
   }
   $('prompt').textContent = prompt; $('prompt').hidden = !prompt;
-  if (power > 0) { power -= dt; if (power <= 0) { power = 0; showMsg('The fuse blew'); sfx.fuse(); } }
+  if (power > 0) { power -= dt; if (power <= 0) { power = 0; showMsg(isBase() ? 'The generator dies' : 'The fuse blew'); sfx.fuse(); } }
+
+  // basement steam vents: on for ~2.5 s every few seconds; standing in the steam hides you
+  P.steam = false;
+  for (const v of vents) {
+    v.t -= dt;
+    if (v.t <= 0) { v.on = !v.on; v.t = v.on ? rand(2.2, 3.2) : rand(3.5, 7); if (v.on && Math.hypot(v.x - P.x, v.y - P.y) < 700) sfx.steam(clamp(1 - Math.hypot(v.x - P.x, v.y - P.y) / 700, 0.15, 1)); }
+    if (v.on) {
+      if (Math.random() < dt * 30) parts.push({ x: v.x + rand(-14, 14), y: v.y + rand(-14, 14), vx: rand(-50, 50), vy: rand(-50, 50), life: rand(0.6, 1.2), c: 'rgba(200,205,210,0.12)', s: rand(14, 30) });
+      if (Math.hypot(v.x - P.x, v.y - P.y) < 70) P.steam = true;
+    }
+  }
+  if (P.steam && !P.steamTold) { P.steamTold = true; note('The steam hides you'); }
 
   // random events
   if (ev) { ev.t -= dt; if (ev.t <= 0) { runEvent(ev.kind); ev = null; } }
@@ -824,8 +1033,8 @@ function update(dt) {
 
   // spawning / hours
   if (toSpawn.length) { spawnT -= dt; if (spawnT <= 0) { spawnEnemy(toSpawn.shift()); spawnT = Math.max(0.6, 2.2 - Math.min(hour, 8) * 0.25) * rand(0.6, 1.3); } }
-  else if (!enemies.length) { if (breakT === 0) { breakT = 4; showMsg('Quiet, for now'); } breakT -= dt; if (breakT <= 0.001) { breakT = 0; nextHour(); if (state !== 'play') return; } }
-  const inDark = toSpawn.length + enemies.length;
+  else if (!enemies.some(e => !e.disguise)) { if (breakT === 0) { breakT = 4; showMsg('Quiet, for now'); } breakT -= dt; if (breakT <= 0.001) { breakT = 0; nextHour(); if (state !== 'play') return; } }
+  const inDark = toSpawn.length + enemies.filter(e => !e.disguise).length;
   $('left').textContent = inDark ? inDark + ' in the dark' : (opts.mode === 'shift' ? 'Dawn in ' + (HOURS.length - hour - 1) + ' h' : 'Hour ' + (hour + 1) + ' survived');
 
   // flares
@@ -847,18 +1056,40 @@ function update(dt) {
   let nearest = 1e9;
   for (const e of enemies) {
     const T = TYPES[e.type];
+    if (e.disguise) { // a faker pretending to be a pickup: still until you come close or shoot it
+      e.lit = false; e.t = (e.t || 0) + dt;
+      if (Math.hypot(P.x - e.x, P.y - e.y) < 75 || e.hitAt !== undefined) reveal(e); else continue;
+    }
+    if (e.burn > 0) { // set alight by the flare gun
+      e.burn -= dt; e.hp -= dt * 1.5;
+      if (Math.random() < dt * 25) parts.push({ x: e.x + rand(-e.r, e.r), y: e.y + rand(-e.r, e.r), vx: rand(-20, 20), vy: rand(-70, -20), life: 0.35, c: Math.random() < 0.5 ? '#ff8a2a' : '#ffd060', s: 3 });
+      if (e.hp <= 0) { kill(e); continue; }
+    }
+    if (e.inVent) { // in the ceiling: crawls straight at you over the walls, unseen, then drops
+      e.lit = false; e.vent -= dt;
+      const vx0 = P.x - e.x, vy0 = P.y - e.y, vd = Math.hypot(vx0, vy0) || 1;
+      if (vd > 60) { e.x += vx0 / vd * 105 * dt; e.y += vy0 / vd * 105 * dt; }
+      e.x = clamp(e.x, 20, WORLD_W - 20); e.y = clamp(e.y, 20, WORLD_H - 20);
+      e.wob += dt * 6;
+      if (Math.random() < dt * 4) parts.push({ x: e.x + rand(-10, 10), y: e.y + rand(-10, 10), vx: rand(-8, 8), vy: rand(-8, 8), life: 0.8, c: '#7a7266', s: 2 }); // dust falling from the ceiling
+      e.scrape -= dt; if (e.scrape <= 0 && vd < 420) { e.scrape = rand(1, 1.8); sfx.scrape(1 - vd / 420); }
+      if ((e.vent <= 0 && vd < 150) || e.vent < -20) dropFromVent(e);
+      nearest = Math.min(nearest, vd + 200);
+      continue;
+    }
     e.age += dt;
     e.lit = litBy(e);
     if (e.lit && !e.seen) { e.seen = true; if (e.type === 'thin') sfx.shriek(); }
     const dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy) || 1;
-    if (d < 170 || e.lit || alarmT > 0) e.aware = Math.max(e.aware, 6);
-    e.aware = Math.max(0, e.aware - dt);
-    const hunting = e.aware > 0 || e.age > 14;
+    if (!P.steam && (d < 170 || e.lit || alarmT > 0)) e.aware = Math.max(e.aware, 6);
+    e.aware = Math.max(0, e.aware - dt * (P.steam ? 4 : 1));
+    const hunting = !(P.steam && d > 60) && (e.aware > 0 || e.age > 14);
     nearest = Math.min(nearest, d);
     let s = e.speed * (alarmT > 0 ? 1.2 : 1);
     if (e.type === 'thin' && e.lit) s = 0;
-    else if (e.type === 'boss') { if (e.lit) s *= 0.85; }
+    else if (e.type === 'boss') { if (e.lit && !e.stoker) s *= 0.85; }
     else if (e.lit) s *= 0.7;
+    if (e.pin > 0) { e.pin -= dt; s *= e.type === 'boss' ? 0.6 : 0; } // nailed in place
     let vx, vy;
     if (hunting) {
       const los = d < 900 && castRay(e.x, e.y, Math.atan2(dy, dx), d) >= d - 2;
@@ -869,7 +1100,11 @@ function update(dt) {
         e.scr -= dt;
         if (e.scr <= 0 && los && d < 560) { scream(e); e.scr = rand(6, 9); }
       }
-      if (e.type === 'boss') {
+      if (e.stoker) { // winds up, then slams the floor
+        if (e.wind > 0) { e.wind -= dt; s = 0; if (e.wind <= 0) slam(e); }
+        else { e.chg -= dt; if (e.chg <= 0 && d < 230) { e.wind = 0.85; e.chg = rand(3.2, 5); sfx.roar(); } }
+        if (Math.random() < dt * 10) parts.push({ x: e.x + rand(-30, 30), y: e.y + rand(-30, 30), vx: rand(-20, 20), vy: rand(-60, -10), life: 0.5, c: '#ff7a20', s: 2 }); // embers
+      } else if (e.type === 'boss') {
         if (e.stun > 0) { e.stun -= dt; s = 0; }
         else if (e.dash > 0) {
           e.dash -= dt; ux = e.dx; uy = e.dy; s = 430;
@@ -919,10 +1154,12 @@ function update(dt) {
     const steps = 3;
     for (let k = 0; k < steps && b.life > 0; k++) {
       if (b.fresh) b.fresh = false; else { b.x += b.vx * dt / steps; b.y += b.vy * dt / steps; }
-      if (solidAt(b.x, b.y)) { b.life = 0; for (let i = 0; i < 5; i++) parts.push({ x: b.x, y: b.y, vx: rand(-120, 120), vy: rand(-120, 120), life: 0.3, c: '#c9b98f', s: 2 }); break; }
+      if (solidAt(b.x, b.y)) { b.life = 0; if (b.fire) flareAt(b.x - b.vx * 0.02, b.y - b.vy * 0.02); for (let i = 0; i < 5; i++) parts.push({ x: b.x, y: b.y, vx: rand(-120, 120), vy: rand(-120, 120), life: 0.3, c: b.fire ? '#ff6a3a' : '#c9b98f', s: 2 }); break; }
       for (const e of enemies) {
-        if (e.hp > 0 && Math.hypot(e.x - b.x, e.y - b.y) < e.r) {
-          e.hp -= 1; b.life = 0; sfx.hit(); e.aware = Math.max(e.aware, 8);
+        if (e.hp > 0 && !e.inVent && Math.hypot(e.x - b.x, e.y - b.y) < e.r) {
+          e.hp -= b.fire ? 2 : 1; b.life = 0; sfx.hit(); e.aware = Math.max(e.aware, 8);
+          if (b.pin) e.pin = Math.max(e.pin, b.pin);
+          if (b.fire) { flareAt(b.x, b.y); e.burn = 3.5; }
           e.hitAt = elapsed; hitMark = { t: elapsed, kill: e.hp <= 0 };
           const sp = Math.hypot(b.vx, b.vy) || 1;
           const kb = e.type === 'boss' ? 12 : e.type === 'brute' ? b.kb * 0.28 : b.kb;
@@ -935,6 +1172,7 @@ function update(dt) {
     }
     b.life -= dt;
   }
+  for (const b of bullets) if (b.life <= 0 && b.fire && !b.done) { b.done = true; if (!solidAt(b.x, b.y)) flareAt(b.x, b.y); } // flare shells that ran out of range still land
   bullets = bullets.filter(b => b.life > 0);
   enemies = enemies.filter(e => e.hp > 0);
   if (pending.length) { enemies.push(...pending); pending = []; }
@@ -947,13 +1185,19 @@ function update(dt) {
       if (p.kind === 'battery') { P.bat = Math.min(P.batMax, P.bat + 45); note('+ Battery'); }
       if (p.kind === 'ammo') { P.ammo.pistol.reserve += 12; note('+ 12 rounds'); }
       if (p.kind === 'shells') { P.ammo.shotgun.reserve += 6; note('+ 6 shells'); }
+      if (p.kind === 'nails') { P.ammo.nailgun.reserve += 30; note('+ 30 nails'); }
+      if (p.kind === 'flareshell') { P.ammo.flaregun.reserve += 2; note('+ 2 flare shells'); }
+      if (p.kind === 'nailgun' || p.kind === 'flaregun') {
+        const g = p.kind; P.owned[g] = true; P.ammo[g].clip = GUNS[g].clip; P.ammo[g].reserve += g === 'nailgun' ? 48 : 3; P.gun = g; P.reload = 0;
+        showMsg(GUNS[g].name); note(g === 'nailgun' ? 'Nails pin them in place' : 'Sets them alight. One shot at a time');
+      }
       if (p.kind === 'med') { P.hp = Math.min(100, P.hp + 35); note('+ Bandages'); }
       if (p.kind === 'flare') { P.flares = Math.min(6, P.flares + 1); note('+ Flare'); }
       if (p.kind === 'cell') { P.batMax += 25; P.bat = P.batMax; note('Bigger battery! Torch lasts longer'); }
       if (p.kind === 'bulb') { P.beam = Math.min(1.48, P.beam + 0.12); note('Brighter bulb! Wider, longer beam'); }
       if (p.kind === 'shotgun') {
-        P.hasShotgun = true; P.ammo.shotgun.clip = 4; P.ammo.shotgun.reserve += 8; P.gun = 'shotgun'; P.reload = 0;
-        showMsg('Shotgun'); note(isTouch ? 'Tap GUN to switch' : 'Press Q to switch guns');
+        P.owned.shotgun = true; P.ammo.shotgun.clip = 4; P.ammo.shotgun.reserve += 8; P.gun = 'shotgun'; P.reload = 0;
+        showMsg('Shotgun'); note(padMode ? 'Press Y to switch guns' : isTouch ? 'Tap GUN to switch' : 'Press Q to switch guns');
       }
     }
   }
@@ -986,19 +1230,40 @@ function kill(e) {
   }
   if (e.type === 'mite') return;
   if (e.type === 'boss') {
-    boss = null; $('hudBoss').hidden = true; shake = 22; showMsg('It stopped moving');
-    ['med', 'battery', 'flare', P.hasShotgun ? 'shells' : 'ammo'].forEach((k, i) => dropPickup(k, { x: e.x + Math.cos(i * 1.6) * 30, y: e.y + Math.sin(i * 1.6) * 30 }));
+    boss = null; $('hudBoss').hidden = true; shake = 22; showMsg(e.stoker ? 'The furnace goes out' : 'It stopped moving');
+    ['med', 'battery', 'flare', ammoDrop()].forEach((k, i) => dropPickup(k, { x: e.x + Math.cos(i * 1.6) * 30, y: e.y + Math.sin(i * 1.6) * 30 }));
     return;
   }
   const r = Math.random();
   if (r < 0.13) dropPickup('battery', e);
-  else if (r < 0.27) dropPickup(P.hasShotgun && Math.random() < 0.4 ? 'shells' : 'ammo', e);
+  else if (r < 0.27) dropPickup(ammoDrop(), e);
   else if (r < 0.33) dropPickup('med', e);
   else if (r < 0.37) dropPickup('flare', e);
 }
 
 // ---------- Render ----------
+// Pickups are drawn once into a small sprite per kind (setting a font and drawing text every frame was slow)
+const pickSprites = {};
+function pickSprite(kind) {
+  if (pickSprites[kind]) return pickSprites[kind];
+  const [c, ch] = PICK_STYLE[kind], wide = ch.length > 1 ? 28 : 20, sc = 2;
+  const cv2 = document.createElement('canvas'); cv2.width = wide * sc; cv2.height = 14 * sc;
+  const g = cv2.getContext('2d'); g.scale(sc, sc);
+  g.fillStyle = c; g.fillRect(0, 0, wide, 14);
+  g.fillStyle = '#111'; g.font = '700 11px "JetBrains Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(ch, wide / 2, 7);
+  if (document.fonts && document.fonts.status !== 'loaded') return cv2; // redraw once the font has arrived
+  return (pickSprites[kind] = { cv: cv2, wide });
+}
+function drawPickup(kind, x, y, t) {
+  const sp = pickSprite(kind), cv2 = sp.cv || sp, wide = sp.wide || cv2.width / 2;
+  const bob = Math.sin(t * 3) * 2;
+  ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(x - wide / 2 + 1, y - 6, wide, 14);
+  ctx.drawImage(cv2, x - wide / 2, y - 8 + bob, wide, 14);
+}
 function drawEnemy(e) {
+  if (e.inVent) return; // up in the ceiling: only its dust shows
+  if (e.disguise) { drawPickup(e.fakeKind, e.x, e.y, e.t || 0); return; }
   const T = TYPES[e.type];
   ctx.save();
   let jx = 0, jy = 0;
@@ -1008,7 +1273,7 @@ function drawEnemy(e) {
   ctx.rotate(face);
   const hit = e.hitAt !== undefined && elapsed - e.hitAt < 0.09;
   if (hit) ctx.scale(1.12, 1.12);
-  ctx.fillStyle = hit ? '#7a2b2b' : T.color;
+  ctx.fillStyle = hit ? '#7a2b2b' : e.stoker ? STOKER.color : T.color;
   const thinLike = e.type === 'thin' || e.type === 'screamer';
   ctx.beginPath();
   const n = e.type === 'boss' ? 16 : 10;
@@ -1022,12 +1287,16 @@ function drawEnemy(e) {
   }
   ctx.fill();
   if (e.type === 'splitter') { ctx.strokeStyle = '#3a2410'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-e.r * 0.7, 0); ctx.lineTo(e.r * 0.6, 0); ctx.stroke(); }
+  if (e.stoker) { ctx.fillStyle = `rgba(255,${110 + (Math.sin(elapsed * 9) * 40 | 0)},30,0.85)`; ctx.fillRect(-e.r * 0.15, -e.r * 0.45, e.r * 0.3, e.r * 0.9); } // glowing furnace slit
+  if (e.type === 'faker') { ctx.fillStyle = '#c9b98f'; ctx.fillRect(-e.r * 0.6, -6, 12, 12); } // the torn label it wore
+  if (e.burn > 0) { ctx.fillStyle = 'rgba(255,120,30,0.35)'; ctx.beginPath(); ctx.arc(0, 0, e.r * 1.2, 0, 7); ctx.fill(); }
   if (e.type === 'screamer') { ctx.fillStyle = '#4a0a0a'; ctx.beginPath(); ctx.ellipse(e.r * 0.55, 0, 4, screamFx > 0 ? 6 : 3, 0, 0, 7); ctx.fill(); }
   // reaching arms (mites get legs)
   ctx.strokeStyle = T.color; ctx.lineCap = 'round';
   ctx.lineWidth = e.type === 'boss' ? 9 : e.type === 'brute' ? 7 : e.type === 'mite' ? 1.5 : 3;
   const sw = Math.sin(e.wob) * 0.3;
-  const arms = e.type === 'boss' ? [-0.8, -0.4, 0.4, 0.8] : e.type === 'mite' ? [-1.2, -0.6, 0.6, 1.2] : [-0.6, 0.6];
+  const arms = e.type === 'boss' ? [-0.8, -0.4, 0.4, 0.8] : e.type === 'mite' || e.type === 'crawler' ? [-1.3, -0.8, -0.35, 0.35, 0.8, 1.3] : [-0.6, 0.6];
+  if (e.type === 'crawler') ctx.lineWidth = 2;
   for (const k of arms) {
     const s2 = k < 0 ? -1 : 1;
     ctx.beginPath(); ctx.moveTo(e.r * 0.2, e.r * k); ctx.lineTo(e.r * (e.type === 'mite' ? 0.9 : 1.4), e.r * (k * 0.8 + s2 * sw * (k < 0 ? -1 : 1))); ctx.stroke();
@@ -1035,17 +1304,35 @@ function drawEnemy(e) {
   ctx.restore();
 }
 function drawEyes(e, alpha) {
-  const T = TYPES[e.type];
+  if (e.inVent || e.disguise) return;
+  const T = e.stoker ? STOKER : TYPES[e.type];
   const face = Math.atan2(P.y - e.y, P.x - e.x);
   const ex = e.x + Math.cos(face) * e.r * 0.45, ey = e.y + Math.sin(face) * e.r * 0.45;
   const px = -Math.sin(face) * e.r * 0.3, py = Math.cos(face) * e.r * 0.3;
-  ctx.fillStyle = `rgba(${T.eye},${alpha})`;
-  ctx.shadowColor = `rgba(${T.eye},${alpha})`; ctx.shadowBlur = e.type === 'boss' ? 14 : 8;
   const s = e.type === 'boss' ? 4.5 : e.type === 'brute' ? 3.2 : e.type === 'mite' ? 1.4 : 2.2;
-  ctx.beginPath(); ctx.arc(ex + px, ey + py, s, 0, 7); ctx.arc(ex - px, ey - py, s, 0, 7);
-  if (e.type === 'boss') ctx.arc(ex, ey, s * 0.8, 0, 7);
-  ctx.fill();
-  ctx.shadowBlur = 0;
+  const spr = eyeSprite(T.eye, s, e.type === 'boss' ? 14 : 8), h = spr.width / 2;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(spr, ex + px - h, ey + py - h); ctx.drawImage(spr, ex - px - h, ey - py - h);
+  if (e.type === 'boss') ctx.drawImage(spr, ex - h, ey - h, spr.width * 0.8, spr.width * 0.8);
+  ctx.globalAlpha = 1;
+}
+// A glowing eye, drawn once per colour and size (a live shadowBlur per eye per frame was slow with a crowd)
+const eyeSprites = new Map();
+function eyeSprite(rgb, s, blur) {
+  const key = rgb + '|' + s + '|' + blur;
+  let c = eyeSprites.get(key);
+  if (!c) {
+    const R = Math.ceil(s + blur), sc = 2;
+    c = document.createElement('canvas'); c.width = c.height = R * 2 * sc;
+    const g = c.getContext('2d'); g.scale(sc, sc);
+    const gr = g.createRadialGradient(R, R, 0, R, R, R);
+    gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(s / R, `rgba(${rgb},0.9)`); gr.addColorStop(Math.min(1, (s + 2) / R), `rgba(${rgb},0.35)`); gr.addColorStop(1, `rgba(${rgb},0)`);
+    g.fillStyle = gr; g.fillRect(0, 0, R * 2, R * 2);
+    const scaled = document.createElement('canvas'); // keep the sprite's size in world units
+    scaled.width = scaled.height = R * 2; scaled.getContext('2d').drawImage(c, 0, 0, R * 2, R * 2);
+    c = scaled; eyeSprites.set(key, c);
+  }
+  return c;
 }
 function box(x, y, w, h, c1, c2, inset) { ctx.fillStyle = c1; ctx.fillRect(x, y, w, h); ctx.fillStyle = c2; ctx.fillRect(x + inset, y + inset, w - inset * 2, h - inset * 2); }
 function drawWall(w) {
@@ -1078,6 +1365,20 @@ function drawWall(w) {
     ctx.fillStyle = '#7a8087'; ctx.fillRect(w.x + w.w / 2 - 1, w.y, 2, w.h);
   } else if (k === 'bench') {
     box(w.x, w.y, w.w, w.h, '#433a30', '#5a4e40', 3);
+  } else if (k === 'pipe') {
+    box(w.x, w.y, w.w, w.h, '#4a3e33', '#6d5a48', 3);
+    ctx.fillStyle = 'rgba(255,230,190,0.12)'; w.w > w.h ? ctx.fillRect(w.x + 3, w.y + 5, w.w - 6, 3) : ctx.fillRect(w.x + 5, w.y + 3, 3, w.h - 6);
+    ctx.fillStyle = '#3a3029'; for (let i = 30; i < Math.max(w.w, w.h) - 10; i += 60) w.w > w.h ? ctx.fillRect(w.x + i, w.y, 6, w.h) : ctx.fillRect(w.x, w.y + i, w.w, 6);
+  } else if (k === 'boiler') {
+    box(w.x, w.y, w.w, w.h, '#2e2a27', '#45403a', 6);
+    ctx.fillStyle = '#5a534a'; for (let i = 16; i < w.w - 10; i += 28) { ctx.beginPath(); ctx.arc(w.x + i, w.y + 12, 3, 0, 7); ctx.arc(w.x + i, w.y + w.h - 12, 3, 0, 7); ctx.fill(); }
+    ctx.fillStyle = `rgba(255,${100 + (Math.sin(elapsed * 3) * 30 | 0)},30,0.8)`; ctx.fillRect(w.x + w.w / 2 - 30, w.y + w.h / 2 - 8, 60, 16); // fire door
+  } else if (k === 'washer') {
+    box(w.x, w.y, w.w, w.h, '#6d6f6c', '#8d908c', 3);
+    ctx.fillStyle = '#3a3d40'; ctx.beginPath(); ctx.arc(w.x + w.w / 2, w.y + w.h / 2, w.w * 0.3, 0, 7); ctx.fill();
+  } else if (k === 'genset') {
+    box(w.x, w.y, w.w, w.h, '#3a3520', '#5c5330', 4);
+    ctx.fillStyle = '#c9a227'; for (let i = 0; i < w.w; i += 20) ctx.fillRect(w.x + i, w.y + w.h - 8, 10, 8);
   } else if (k === 'crate') {
     box(w.x, w.y, w.w, w.h, '#4a3c28', '#5f4d33', 3);
     ctx.strokeStyle = '#3a2f20'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(w.x + 3, w.y + 3); ctx.lineTo(w.x + w.w - 3, w.y + w.h - 3); ctx.moveTo(w.x + w.w - 3, w.y + 3); ctx.lineTo(w.x + 3, w.y + w.h - 3); ctx.stroke();
@@ -1086,7 +1387,8 @@ function drawWall(w) {
     ctx.fillStyle = '#6f706a'; ctx.fillRect(w.x, w.y, w.w, 4);
   }
 }
-const PICK_STYLE = { battery: ['#f2c46d', 'B'], ammo: ['#c9b98f', '≡'], shells: ['#c0562f', 'S'], med: ['#d9d2c4', '+'], flare: ['#e0443a', 'F'], cell: ['#ffe08a', 'B+'], bulb: ['#fff3c4', 'L+'], shotgun: ['#8a7a5a', 'SG'] };
+const PICK_STYLE = { nailgun: ['#8f9aa6', 'NG'], flaregun: ['#e0603a', 'FG'], nails: ['#a7b0ba', 'N'], flareshell: ['#ff8a5a', 'f'],
+  battery: ['#f2c46d', 'B'], ammo: ['#c9b98f', '≡'], shells: ['#c0562f', 'S'], med: ['#d9d2c4', '+'], flare: ['#e0443a', 'F'], cell: ['#ffe08a', 'B+'], bulb: ['#fff3c4', 'L+'], shotgun: ['#8a7a5a', 'SG'] };
 function render() {
   const sk = shake * settings.shake, sx = sk ? rand(-sk, sk) : 0, sy = sk ? rand(-sk, sk) : 0;
   const ox = Math.round(cam.x + sx), oy = Math.round(cam.y + sy);
@@ -1095,23 +1397,21 @@ function render() {
   ctx.setTransform(dpr, 0, 0, dpr, -ox * dpr, -oy * dpr);
   ctx.drawImage(floorCv, 0, 0);
 
-  for (const p of pickups) {
-    const [c, ch] = PICK_STYLE[p.kind];
-    const bob = Math.sin(p.t * 3) * 2, wide = ch.length > 1 ? 28 : 20;
-    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(p.x - wide / 2 + 1, p.y - 6, wide, 14);
-    ctx.fillStyle = c; ctx.fillRect(p.x - wide / 2, p.y - 8 + bob, wide, 14);
-    ctx.fillStyle = '#111'; ctx.font = '700 11px "JetBrains Mono", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(ch, p.x, p.y - 1 + bob);
-  }
+  for (const p of pickups) drawPickup(p.kind, p.x, p.y, p.t);
   for (const f of flares) { ctx.fillStyle = '#e0443a'; ctx.fillRect(f.x - 5, f.y - 2, 10, 4); }
   for (const e of enemies) drawEnemy(e);
-  for (const p of parts) { ctx.fillStyle = p.c; ctx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s); }
+  for (const p of parts) { ctx.fillStyle = p.c; if (p.s > 8) { ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (1.4 - p.life * 0.4), 0, 7); ctx.fill(); } else ctx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s); }
   ctx.strokeStyle = 'rgba(255,230,170,0.9)'; ctx.lineWidth = 2;
-  for (const b of bullets) { ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * 0.012, b.y - b.vy * 0.012); ctx.stroke(); }
+  for (const b of bullets) {
+    if (b.fire) { ctx.fillStyle = '#ff7a3a'; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, 7); ctx.fill(); continue; }
+    ctx.strokeStyle = b.pin ? 'rgba(190,200,210,0.9)' : 'rgba(255,230,170,0.9)'; ctx.lineWidth = b.pin ? 1.5 : 2;
+    ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * (b.pin ? 0.006 : 0.012), b.y - b.vy * (b.pin ? 0.006 : 0.012)); ctx.stroke();
+  }
 
   // player
   ctx.save(); ctx.translate(P.x, P.y); ctx.rotate(P.a);
-  ctx.fillStyle = '#2a2f36'; P.gun === 'shotgun' ? ctx.fillRect(4, -4, 26, 8) : ctx.fillRect(4, -3, 18, 6);
+  ctx.fillStyle = P.gun === 'flaregun' ? '#8a3a22' : P.gun === 'nailgun' ? '#4a5560' : '#2a2f36';
+  if (P.gun === 'shotgun') ctx.fillRect(4, -4, 26, 8); else if (P.gun === 'nailgun') ctx.fillRect(4, -5, 22, 10); else if (P.gun === 'flaregun') ctx.fillRect(4, -4, 16, 8); else ctx.fillRect(4, -3, 18, 6);
   ctx.fillStyle = P.inv > 0 && Math.floor(P.inv * 20) % 2 ? '#a33' : '#5e6b73';
   ctx.beginPath(); ctx.arc(0, 0, P.r, 0, 7); ctx.fill();
   ctx.fillStyle = '#c4b49a'; ctx.beginPath(); ctx.arc(2, 0, 7, 0, 7); ctx.fill();
@@ -1119,7 +1419,7 @@ function render() {
 
   for (const w of walls) drawWall(w);
   // fuse box on the wall
-  ctx.fillStyle = '#5b5446'; ctx.fillRect(fusePos.x - 16, fusePos.y - 8, 32, 16);
+  ctx.fillStyle = isBase() ? '#6a5a2a' : '#5b5446'; ctx.fillRect(fusePos.x - 16, fusePos.y - 8, 32, 16);
   ctx.fillStyle = '#2a261f'; ctx.fillRect(fusePos.x - 12, fusePos.y - 5, 24, 10);
 
   // darkness
@@ -1180,7 +1480,7 @@ function render() {
   // crosshair
   if (!isTouch) {
     ctx.strokeStyle = 'rgba(217,210,196,0.6)'; ctx.lineWidth = 1;
-    const r = P.gun === 'shotgun' ? 12 : 7;
+    const r = P.gun === 'shotgun' ? 12 : P.gun === 'nailgun' ? 9 : 7;
     ctx.beginPath(); ctx.arc(mouse.x, mouse.y, r, 0, 7); ctx.moveTo(mouse.x - r - 5, mouse.y); ctx.lineTo(mouse.x - r + 3, mouse.y); ctx.moveTo(mouse.x + r - 3, mouse.y); ctx.lineTo(mouse.x + r + 5, mouse.y); ctx.stroke();
     const ht = hitMark ? elapsed - hitMark.t : 1;
     if (ht < 0.16) {
@@ -1212,7 +1512,7 @@ function updateHud() {
 }
 
 // ---------- Flow ----------
-function setHud(on) { ['hud', 'hudClock', 'hudScore', 'hudAmmo'].forEach(id => $(id).hidden = !on); if (!on) { $('hudBoss').hidden = true; $('prompt').hidden = true; } }
+function setHud(on) { ['hud', 'hudClock', 'hudScore', 'hudAmmo'].forEach(id => $(id).hidden = !on); $('tPause').hidden = !(on && isTouch); if (!on) { $('hudBoss').hidden = true; $('prompt').hidden = true; } }
 function start() {
   initAudio();
   D = DIFF[opts.diff]; loadBest();
@@ -1255,6 +1555,7 @@ function syncSettings() {
   $('sVol').value = settings.vol; $('oVol').textContent = Math.round(settings.vol * 100) + '%';
   for (const b of $('shakeSeg').children) b.setAttribute('aria-pressed', String(+b.dataset.v === settings.shake));
   for (const b of $('resSeg').children) b.setAttribute('aria-pressed', String(+b.dataset.v === settings.res));
+  for (const b of $('padSeg').children) b.setAttribute('aria-pressed', String(!!+b.dataset.v === settings.pads));
   $('fsBtn').textContent = document.fullscreenElement ? 'Leave fullscreen' : 'Fullscreen';
   if (master) master.gain.value = 0.55 * settings.vol;
   try { localStorage.setItem('ward9-settings', JSON.stringify(settings)); } catch (e) {}
@@ -1265,6 +1566,7 @@ $('sVol').addEventListener('input', () => { settings.vol = +$('sVol').value; syn
 $('sVol').addEventListener('change', () => { initAudio(); sfx.pick(); });
 $('shakeSeg').addEventListener('click', e => { const v = e.target.dataset && e.target.dataset.v; if (v) { settings.shake = +v; syncSettings(); } });
 $('resSeg').addEventListener('click', e => { const v = e.target.dataset && e.target.dataset.v; if (v) { settings.res = +v; syncSettings(); resize(); } });
+$('padSeg').addEventListener('click', e => { const v = e.target.dataset && e.target.dataset.v; if (v) { settings.pads = !!+v; if (!settings.pads) padRelease(); syncSettings(); } });
 $('fsBtn').addEventListener('click', () => { const r = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); r && r.catch && r.catch(() => {}); });
 document.addEventListener('fullscreenchange', () => { if (!$('setScreen').hidden) syncSettings(); });
 $('setBtn').addEventListener('click', () => openSettings('menu'));
@@ -1284,6 +1586,7 @@ $('resumeBtn').addEventListener('click', () => setPaused(false));
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  pollPad(dt);
   if (hitStop > 0) hitStop -= dt; else if (state === 'play') update(dt);
   if (state === 'dying') { shake = Math.max(0, shake - dt * 30); hurtFx = 1; }
   if (P) render();
@@ -1297,6 +1600,20 @@ newGame(); $('message').classList.remove('show'); enemies = []; toSpawn = []; ev
 ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.globalAlpha = 0.01;
 for (const type in TYPES) { const e = { type, x: 60, y: 60, r: TYPES[type].r || 16, wob: 0, wind: 0, dash: 0, dx: 1, dy: 0 }; drawEnemy(e); drawEyes(e, 1); drawEyes(e, 0.4); }
 ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+// progress sync between devices (sync.js): best scores only, settings stay on each device
+if (window.GameSync) {
+  GameSync.init({ game: 'wardnine', keys: [{ match: /^ward9-best/, mode: 'max' }], idle: () => state === 'menu' });
+  $('syncBtn').addEventListener('click', () => GameSync.open());
+} else $('syncBtn').hidden = true;
+// test hook (only with ?test in the address): lets the playtests reach inside
+if (/[?&]test\b/.test(location.search)) window.__w9 = {
+  get P() { return P; }, get enemies() { return enemies; }, get pickups() { return pickups; }, get flares() { return flares; }, get vents() { return vents; },
+  get rooms() { return rooms; }, get state() { return state; }, get hour() { return hour; }, get boss() { return boss; }, opts,
+  start, nextHour, spawn: (t, x, y) => { const e = makeEnemy(t, x, y, true); enemies.push(e); if (t === 'boss') boss = e; return e; },
+  give: g => { P.owned[g] = true; P.ammo[g].clip = GUNS[g].clip; P.ammo[g].reserve = 99; P.gun = g; }, shoot: tryShoot, switchGun,
+  aim: (x, y) => { mouse.x = x - cam.x; mouse.y = y - cam.y; }, step: sec => { for (let i = 0; i < sec * 60; i++) if (state === 'play') update(1 / 60); },
+  setMap: m => { opts.map = m; syncSeg(); }
+};
 requestAnimationFrame(frame);
 })();
 </script>

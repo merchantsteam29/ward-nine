@@ -1,5 +1,20 @@
 [
   {
+    "version": "1.2",
+    "date": "2026-11-10",
+    "title": "The Basement",
+    "notes": [
+      "New map: The Basement. Boiler room, cold store, laundry and pipe tunnels, with hardly any lamps. Fix the generator to get the lights on, and stand in the steam from the vents to hide.",
+      "New boss down there: the Stoker. It slams the floor and puts your flares out.",
+      "New guns: the nail gun (fast, pins monsters in place) and the flare gun (sets them alight). Find them lying around from 2 and 3 AM.",
+      "New monsters on both maps: the crawler moves through the ceiling vents and drops on you (watch for falling dust), and the faker looks like a pickup until you get close.",
+      "Settings: volume, screen shake, sharpness, fullscreen and controllers.",
+      "Plays with a controller, and has a pause button on phones.",
+      "Hits feel heavier: monsters flash when shot, the crosshair marks hits, and kills land with a tiny freeze.",
+      "Runs smoother with lots of monsters on screen."
+    ]
+  },
+  {
     "version": "1.1",
     "date": "2026-11-09",
     "title": "Install as an app",
