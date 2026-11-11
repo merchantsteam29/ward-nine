@@ -156,6 +156,7 @@ body.is-pad .keys.desk, body.is-pad .keys.mob { display: none; }
     <div class="seg-label">Mode</div>
     <div class="seg" id="modeSeg"><button type="button" data-v="shift">Until dawn</button><button type="button" data-v="endless">Endless night</button></div>
     <button class="go" id="startBtn" type="button">Begin the shift</button>
+    <button class="go ghost" id="dailyBoardBtn" type="button">🏆 Today's top 10</button>
     <button class="go ghost" id="dailyBtn" type="button">Daily night<small id="dailyTxt" style="display:block;font-size:10px;letter-spacing:.1em;margin-top:4px;opacity:.85"></small></button>
     <button class="go ghost" id="setBtn" type="button">Settings</button>
     <button class="go ghost" id="syncBtn" type="button" title="Keep your best scores on all your devices">☁ Sync</button>
@@ -1266,6 +1267,7 @@ function kill(e) {
   }
   if (e.type === 'mite') return;
   if (e.type === 'boss') {
+    window.GameSync?.unlock(e.stoker ? 'stoker' : 'sister');
     boss = null; $('hudBoss').hidden = true; shake = 22; showMsg(e.stoker ? 'The furnace goes out' : 'It stopped moving');
     ['med', 'battery', 'flare', ammoDrop()].forEach((k, i) => dropPickup(k, { x: e.x + Math.cos(i * 1.6) * 30, y: e.y + Math.sin(i * 1.6) * 30 }));
     return;
@@ -1583,6 +1585,11 @@ function finish(won) {
   const isBest = !daily && score > best;
   if (isBest) { best = score; try { localStorage.setItem(bestKey(), String(best)); } catch (e) {} }
   const dr = daily ? recordDaily(score) : null;
+  if (window.GameSync) {
+    if (won) { GameSync.unlock('dawn'); if (opts.diff === 'nightmare') GameSync.unlock('nightmare'); if (opts.map === 'basement') GameSync.unlock('basement'); }
+    if (opts.mode === 'endless' && hour >= 6) GameSync.unlock('endless6');
+    if (dr && score > 0) { const dd = daily; setTimeout(() => GameSync.board('daily-' + dd.date, 'Daily night · ' + dd.date + ' · ' + dd.twist.name, { score, info: won ? 'saw the dawn' : 'lost at ' + hourLabel(hour) }), 1600); }
+  }
   showBest(); setHud(false);
   const endless = opts.mode === 'endless';
   $('endTag').textContent = won ? '6:00 AM · Sunrise' : 'Lost at ' + hourLabel(hour);
@@ -1628,6 +1635,7 @@ document.addEventListener('visibilitychange', () => { if (!ac) return; if (docum
 $('startBtn').addEventListener('click', () => start(false));
 $('againBtn').addEventListener('click', () => start(!!daily));
 $('dailyBtn').addEventListener('click', () => start(true));
+$('dailyBoardBtn').addEventListener('click', () => { const t = dailyToday(); if (window.GameSync) GameSync.board('daily-' + t.date, 'Daily night · ' + t.date + ' · ' + t.twist.name, null); });
 $('dailyTxt').textContent = dailyLabel();
 $('menuBtn').addEventListener('click', toMenu);
 $('quitBtn').addEventListener('click', toMenu);
@@ -1652,7 +1660,15 @@ for (const type in TYPES) { const e = { type, x: 60, y: 60, r: TYPES[type].r || 
 ctx.globalAlpha = 1; ctx.shadowBlur = 0;
 // progress sync between devices (sync.js): best scores only, settings stay on each device
 if (window.GameSync) {
-  GameSync.init({ game: 'wardnine', keys: [{ match: /^ward9-best/, mode: 'max' }, { match: 'ward9-daily' }], idle: () => state === 'menu' });
+  GameSync.init({ game: 'wardnine', ach: [
+    { id: 'dawn', name: 'Day shift', desc: 'Survive until dawn' },
+    { id: 'nightmare', name: 'Nightmare shift', desc: 'Survive until dawn on Nightmare' },
+    { id: 'basement', name: 'Down below', desc: 'Survive until dawn in the Basement' },
+    { id: 'sister', name: 'Lights out, Sister', desc: 'Put down the Ward Sister' },
+    { id: 'stoker', name: 'Furnace out', desc: 'Put down the Stoker' },
+    { id: 'endless6', name: 'Night that never ends', desc: 'Last 6 hours in Endless night' },
+    { id: 'daily', name: 'Daily rounds', desc: 'Play a daily night', test: (g) => !!g('ward9-daily') }
+  ], keys: [{ match: /^ward9-best/, mode: 'max' }, { match: 'ward9-daily' }], idle: () => state === 'menu' });
   $('syncBtn').addEventListener('click', () => GameSync.open());
 } else $('syncBtn').hidden = true;
 // test hook (only with ?test in the address): lets the playtests reach inside
