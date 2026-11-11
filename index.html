@@ -71,6 +71,11 @@ button.go:hover { background: var(--ink); }
 button.go:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 button.go.ghost { background: transparent; color: var(--dim); border: 1px solid rgba(217,210,196,0.25); }
 .stats { font-variant-numeric: tabular-nums; color: var(--dim); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+.settings { display: grid; gap: 14px; text-align: left; }
+.settings label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 12px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); }
+.settings label output { color: var(--bulb); font-variant-numeric: tabular-nums; }
+.settings input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--bulb); }
+.settings .seg { justify-content: flex-start; grid-column: 1 / -1; }
 @keyframes flick { 0%, 91%, 94%, 100% { opacity: 1; } 92% { opacity: 0.25; } 93% { opacity: 0.8; } 95% { opacity: 0.4; } }
 
 .touch { position: fixed; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); display: none; grid-template-columns: repeat(3, 52px); gap: 8px; }
@@ -133,6 +138,7 @@ body.is-touch .keys.mob { display: grid; }
     <div class="seg-label">Mode</div>
     <div class="seg" id="modeSeg"><button type="button" data-v="shift">Until dawn</button><button type="button" data-v="endless">Endless night</button></div>
     <button class="go" id="startBtn" type="button">Begin the shift</button>
+    <button class="go ghost" id="setBtn" type="button">Settings</button>
     <button class="go ghost" id="installApp" type="button" style="display:none">Install as an app</button>
     <button class="go ghost" id="pcDownload" type="button" title="The Game Library app for Windows: every game in one place">Download for PC</button>
     <p class="stats" id="bestTxt"></p>
@@ -153,7 +159,22 @@ body.is-touch .keys.mob { display: grid; }
   <div class="card">
     <h1 style="font-size:56px">Paused</h1>
     <button class="go" id="resumeBtn" type="button">Resume</button>
+    <button class="go ghost" id="pSetBtn" type="button">Settings</button>
     <button class="go ghost" id="quitBtn" type="button">Quit to menu</button>
+  </div>
+</div>
+<div class="overlay" id="setScreen" hidden>
+  <div class="card">
+    <h1 style="font-size:48px">Settings</h1>
+    <div class="settings">
+      <label for="sVol">Volume <output id="oVol"></output><input type="range" id="sVol" min="0" max="1" step="0.05"></label>
+      <div><div class="seg-label" style="margin-bottom:6px">Screen shake</div>
+        <div class="seg" id="shakeSeg"><button type="button" data-v="1">Full</button><button type="button" data-v="0.4">Reduced</button><button type="button" data-v="0">Off</button></div></div>
+      <div><div class="seg-label" style="margin-bottom:6px">Sharpness</div>
+        <div class="seg" id="resSeg"><button type="button" data-v="2">Sharp</button><button type="button" data-v="1.25">Balanced</button><button type="button" data-v="1">Fastest</button></div></div>
+    </div>
+    <button class="go ghost" id="fsBtn" type="button">Fullscreen</button>
+    <button class="go" id="setDone" type="button">Done</button>
   </div>
 </div>
 <script>
@@ -179,8 +200,11 @@ const DIFF = {
 };
 const MODES = { shift: 'Until dawn', endless: 'Endless night' };
 let vw = 0, vh = 0, dpr = 1;
+// player settings (volume, shake, sharpness), separate from difficulty/mode
+const settings = { vol: 0.8, shake: 1, res: 2 };
+try { Object.assign(settings, JSON.parse(localStorage.getItem('ward9-settings') || '{}')); } catch (e) {}
 function resize() {
-  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  dpr = Math.min(window.devicePixelRatio || 1, settings.res);
   vw = window.innerWidth; vh = window.innerHeight;
   cv.width = fog.width = Math.round(vw * dpr);
   cv.height = fog.height = Math.round(vh * dpr);
@@ -219,7 +243,7 @@ function initAudio() {
   if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
   try {
     ac = new (window.AudioContext || window.webkitAudioContext)();
-    master = ac.createGain(); master.gain.value = 0.55; master.connect(ac.destination);
+    master = ac.createGain(); master.gain.value = 0.55 * settings.vol; master.connect(ac.destination);
     noiseBuf = ac.createBuffer(1, ac.sampleRate * 0.5, ac.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -455,11 +479,11 @@ function bloodDecal(x, y, size) {
   for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(x + rand(-size, size), y + rand(-size, size), rand(2, size * 0.6), 0, 7); g.fill(); }
 }
 
-function castRay(ox, oy, a, max) {
+function castRay(ox, oy, a, max, list = segs) {
   const dx = Math.cos(a), dy = Math.sin(a);
   let best = max;
-  for (let i = 0; i < segs.length; i++) {
-    const s = segs[i];
+  for (let i = 0; i < list.length; i++) {
+    const s = list[i];
     const sx = s[2] - s[0], sy = s[3] - s[1];
     const den = dx * sy - dy * sx;
     if (den > -1e-9 && den < 1e-9) continue;
@@ -471,9 +495,17 @@ function castRay(ox, oy, a, max) {
   }
   return best;
 }
+// Only walls within reach of the light can block it: test those, not the whole level.
+const nearSegs = [];
 function polyPts(ox, oy, a0, a1, n, range) {
-  const pts = [];
-  for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; const t = castRay(ox, oy, a, range); pts.push(ox + Math.cos(a) * t, oy + Math.sin(a) * t); }
+  nearSegs.length = 0;
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    if (Math.min(s[0], s[2]) > ox + range || Math.max(s[0], s[2]) < ox - range || Math.min(s[1], s[3]) > oy + range || Math.max(s[1], s[3]) < oy - range) continue;
+    nearSegs.push(s);
+  }
+  const pts = new Array((n + 1) * 2);
+  for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n; const t = castRay(ox, oy, a, range, nearSegs); pts[i * 2] = ox + Math.cos(a) * t; pts[i * 2 + 1] = oy + Math.sin(a) * t; }
   return pts;
 }
 function tracePoly(g, ox, oy, pts) { g.beginPath(); g.moveTo(ox, oy); for (let i = 0; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]); g.closePath(); }
@@ -575,6 +607,7 @@ function flowDir(e, fx, fy, G) {
 
 // ---------- State ----------
 let state = 'menu';
+let hitStop = 0, hitMark = null; // game feel: a beat of freeze on kills, a marker on the crosshair when a shot lands
 let P, enemies, bullets, parts, pickups, flares, pending, cam, shake, flash, hour, toSpawn, spawnT, breakT, score, kills, beatT, hurtFx, msgT, elapsed;
 let power, fuseReady, fixP, ev, alarmT, alarmBeep, screamFx, boss, flowT, stepT;
 const TYPES = {
@@ -890,6 +923,7 @@ function update(dt) {
       for (const e of enemies) {
         if (e.hp > 0 && Math.hypot(e.x - b.x, e.y - b.y) < e.r) {
           e.hp -= 1; b.life = 0; sfx.hit(); e.aware = Math.max(e.aware, 8);
+          e.hitAt = elapsed; hitMark = { t: elapsed, kill: e.hp <= 0 };
           const sp = Math.hypot(b.vx, b.vy) || 1;
           const kb = e.type === 'boss' ? 12 : e.type === 'brute' ? b.kb * 0.28 : b.kb;
           e.kb.x += b.vx / sp * kb; e.kb.y += b.vy / sp * kb;
@@ -942,6 +976,7 @@ function update(dt) {
 function kill(e) {
   const T = TYPES[e.type];
   score += T.pts * (hour + 1); kills++;
+  hitStop = e.type === 'boss' ? 0.18 : e.type === 'brute' ? 0.07 : 0.035;
   sfx.die(); bloodDecal(e.x, e.y, e.r);
   for (let i = 0; i < (e.type === 'boss' ? 60 : 18); i++) parts.push({ x: e.x, y: e.y, vx: rand(-200, 200), vy: rand(-200, 200), life: rand(0.3, 0.8), c: i % 3 ? '#1a0e10' : '#6e0d0d', s: rand(2, 5) });
   if (e.type === 'splitter') {
@@ -971,7 +1006,9 @@ function drawEnemy(e) {
   ctx.translate(e.x + jx, e.y + jy);
   const face = e.type === 'boss' && e.dash > 0 ? Math.atan2(e.dy, e.dx) : Math.atan2(P.y - e.y, P.x - e.x);
   ctx.rotate(face);
-  ctx.fillStyle = T.color;
+  const hit = e.hitAt !== undefined && elapsed - e.hitAt < 0.09;
+  if (hit) ctx.scale(1.12, 1.12);
+  ctx.fillStyle = hit ? '#7a2b2b' : T.color;
   const thinLike = e.type === 'thin' || e.type === 'screamer';
   ctx.beginPath();
   const n = e.type === 'boss' ? 16 : 10;
@@ -1051,7 +1088,7 @@ function drawWall(w) {
 }
 const PICK_STYLE = { battery: ['#f2c46d', 'B'], ammo: ['#c9b98f', '≡'], shells: ['#c0562f', 'S'], med: ['#d9d2c4', '+'], flare: ['#e0443a', 'F'], cell: ['#ffe08a', 'B+'], bulb: ['#fff3c4', 'L+'], shotgun: ['#8a7a5a', 'SG'] };
 function render() {
-  const sx = shake ? rand(-shake, shake) : 0, sy = shake ? rand(-shake, shake) : 0;
+  const sk = shake * settings.shake, sx = sk ? rand(-sk, sk) : 0, sy = sk ? rand(-sk, sk) : 0;
   const ox = Math.round(cam.x + sx), oy = Math.round(cam.y + sy);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
@@ -1145,6 +1182,14 @@ function render() {
     ctx.strokeStyle = 'rgba(217,210,196,0.6)'; ctx.lineWidth = 1;
     const r = P.gun === 'shotgun' ? 12 : 7;
     ctx.beginPath(); ctx.arc(mouse.x, mouse.y, r, 0, 7); ctx.moveTo(mouse.x - r - 5, mouse.y); ctx.lineTo(mouse.x - r + 3, mouse.y); ctx.moveTo(mouse.x + r - 3, mouse.y); ctx.lineTo(mouse.x + r + 5, mouse.y); ctx.stroke();
+    const ht = hitMark ? elapsed - hitMark.t : 1;
+    if (ht < 0.16) {
+      const a = 1 - ht / 0.16, m0 = r + 3, m1 = r + 9;
+      ctx.strokeStyle = hitMark.kill ? `rgba(220,50,40,${a})` : `rgba(242,236,220,${a})`; ctx.lineWidth = hitMark.kill ? 2.5 : 1.5;
+      ctx.beginPath();
+      for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { ctx.moveTo(mouse.x + sx * m0 * 0.7, mouse.y + sy * m0 * 0.7); ctx.lineTo(mouse.x + sx * m1 * 0.7, mouse.y + sy * m1 * 0.7); }
+      ctx.stroke();
+    }
   }
   if (stick.id !== null) {
     ctx.strokeStyle = 'rgba(217,210,196,0.3)'; ctx.lineWidth = 2;
@@ -1171,7 +1216,7 @@ function setHud(on) { ['hud', 'hudClock', 'hudScore', 'hudAmmo'].forEach(id => $
 function start() {
   initAudio();
   D = DIFF[opts.diff]; loadBest();
-  newGame();
+  newGame(); hitStop = 0; hitMark = null;
   $('menu').hidden = true; $('endScreen').hidden = true; $('pauseScreen').hidden = true;
   setHud(true); state = 'play'; last = performance.now();
 }
@@ -1204,6 +1249,32 @@ function finish(won) {
 function lose() { P.hp = 0; updateHud(); setTimeout(() => finish(false), 700); state = 'dying'; }
 function win() { finish(true); }
 
+// ---------- Settings screen ----------
+let setFrom = null; // 'menu' or 'pause': where Done goes back to
+function syncSettings() {
+  $('sVol').value = settings.vol; $('oVol').textContent = Math.round(settings.vol * 100) + '%';
+  for (const b of $('shakeSeg').children) b.setAttribute('aria-pressed', String(+b.dataset.v === settings.shake));
+  for (const b of $('resSeg').children) b.setAttribute('aria-pressed', String(+b.dataset.v === settings.res));
+  $('fsBtn').textContent = document.fullscreenElement ? 'Leave fullscreen' : 'Fullscreen';
+  if (master) master.gain.value = 0.55 * settings.vol;
+  try { localStorage.setItem('ward9-settings', JSON.stringify(settings)); } catch (e) {}
+}
+function openSettings(from) { setFrom = from; (from === 'pause' ? $('pauseScreen') : $('menu')).hidden = true; $('setScreen').hidden = false; syncSettings(); $('setDone').focus(); }
+function closeSettings() { $('setScreen').hidden = true; (setFrom === 'pause' ? $('pauseScreen') : $('menu')).hidden = false; (setFrom === 'pause' ? $('resumeBtn') : $('setBtn')).focus(); setFrom = null; }
+$('sVol').addEventListener('input', () => { settings.vol = +$('sVol').value; syncSettings(); });
+$('sVol').addEventListener('change', () => { initAudio(); sfx.pick(); });
+$('shakeSeg').addEventListener('click', e => { const v = e.target.dataset && e.target.dataset.v; if (v) { settings.shake = +v; syncSettings(); } });
+$('resSeg').addEventListener('click', e => { const v = e.target.dataset && e.target.dataset.v; if (v) { settings.res = +v; syncSettings(); resize(); } });
+$('fsBtn').addEventListener('click', () => { const r = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); r && r.catch && r.catch(() => {}); });
+document.addEventListener('fullscreenchange', () => { if (!$('setScreen').hidden) syncSettings(); });
+$('setBtn').addEventListener('click', () => openSettings('menu'));
+$('pSetBtn').addEventListener('click', () => openSettings('pause'));
+$('setDone').addEventListener('click', closeSettings);
+window.addEventListener('keydown', e => { if (!setFrom) return; if (e.key === 'Escape') { e.stopImmediatePropagation(); closeSettings(); } else if (e.key.toLowerCase() === 'p') e.stopImmediatePropagation(); }, true);
+if (!document.documentElement.requestFullscreen) $('fsBtn').hidden = true;
+// quiet when the tab is hidden
+document.addEventListener('visibilitychange', () => { if (!ac) return; if (document.hidden) ac.suspend().catch(() => {}); else ac.resume().catch(() => {}); });
+
 $('startBtn').addEventListener('click', start);
 $('againBtn').addEventListener('click', start);
 $('menuBtn').addEventListener('click', toMenu);
@@ -1213,13 +1284,19 @@ $('resumeBtn').addEventListener('click', () => setPaused(false));
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  if (state === 'play') update(dt);
+  if (hitStop > 0) hitStop -= dt; else if (state === 'play') update(dt);
   if (state === 'dying') { shake = Math.max(0, shake - dt * 30); hurtFx = 1; }
   if (P) render();
   requestAnimationFrame(frame);
 }
 // draw a still ward behind the title screen
 newGame(); $('message').classList.remove('show'); enemies = []; toSpawn = []; ev = null;
+// The first glow (shadowBlur) the browser draws costs a one-off ~70ms set-up, which used to land
+// on the first frame an enemy's eyes showed. Pay it here, behind the title screen, instead.
+// Same for the first enemy of each kind (rotated shapes, round-capped arms): draw one of each once.
+ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.globalAlpha = 0.01;
+for (const type in TYPES) { const e = { type, x: 60, y: 60, r: TYPES[type].r || 16, wob: 0, wind: 0, dash: 0, dx: 1, dy: 0 }; drawEnemy(e); drawEyes(e, 1); drawEyes(e, 0.4); }
+ctx.globalAlpha = 1; ctx.shadowBlur = 0;
 requestAnimationFrame(frame);
 })();
 </script>
