@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.3",
+    "date": "2026-11-11",
+    "title": "Daily night",
+    "notes": [
+      "Daily night: one night a day that's the same for everyone: the same building, the same map and a twist (Blackout, Shotgun start, Swarm, Dying batteries, Fakers everywhere or Nail gun start).",
+      "Your best for the day and a day streak are kept, separate from your normal best scores."
+    ]
+  },
+  {
     "version": "1.2",
     "date": "2026-11-10",
     "title": "The Basement",

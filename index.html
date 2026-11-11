@@ -156,6 +156,7 @@ body.is-pad .keys.desk, body.is-pad .keys.mob { display: none; }
     <div class="seg-label">Mode</div>
     <div class="seg" id="modeSeg"><button type="button" data-v="shift">Until dawn</button><button type="button" data-v="endless">Endless night</button></div>
     <button class="go" id="startBtn" type="button">Begin the shift</button>
+    <button class="go ghost" id="dailyBtn" type="button">Daily night<small id="dailyTxt" style="display:block;font-size:10px;letter-spacing:.1em;margin-top:4px;opacity:.85"></small></button>
     <button class="go ghost" id="setBtn" type="button">Settings</button>
     <button class="go ghost" id="syncBtn" type="button" title="Keep your best scores on all your devices">☁ Sync</button>
     <button class="go ghost" id="installApp" type="button" style="display:none">Install as an app</button>
@@ -270,6 +271,40 @@ $('modeSeg').addEventListener('click', e => { const v = e.target.dataset && e.ta
 $('mapSeg').addEventListener('click', e => { const v = e.target.dataset && e.target.dataset.v; if (v && v !== opts.map) { opts.map = v; syncSeg(); if (state === 'menu') { newGame(); $('message').classList.remove('show'); enemies = []; toSpawn = []; ev = null; } } });
 syncSeg();
 const hourLabel = n => n < HOURS.length ? HOURS[n] : 'Night ' + (Math.floor(n / 6) + 1) + ' · ' + HOURS[n % 6];
+
+// ---------- The daily night ----------
+// Today's date (UTC, the same day everywhere) picks the map and a twist, and seeds the layout.
+const TWISTS = [
+  { id: 'blackout', name: 'Blackout', desc: 'The fuse box is dead all night. No ward lamps.' },
+  { id: 'shotgun', name: 'Shotgun start', desc: 'You start with the shotgun and a pocket of shells.' },
+  { id: 'swarm', name: 'Swarm', desc: '40% more of them in the dark.' },
+  { id: 'dim', name: 'Dying batteries', desc: 'Your torch drains twice as fast. Batteries charge double.' },
+  { id: 'fakers', name: 'Fakers everywhere', desc: 'Three things every hour that are not pickups.' },
+  { id: 'nails', name: 'Nail gun start', desc: 'You start with the nail gun.' }
+];
+function dailyToday() {
+  const date = new Date().toISOString().slice(0, 10);
+  let h = 2166136261; for (const c of 'ward9:' + date) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  h >>>= 0;
+  const rng = () => { let st = h; return () => { st = (st + 0x6D2B79F5) | 0; let t = Math.imul(st ^ (st >>> 15), 1 | st); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+  return { date, twist: TWISTS[h % TWISTS.length], map: (h >>> 8) % 2 ? 'basement' : 'ward', rng };
+}
+let daily = null, savedOpts = null;
+const twist = id => !!daily && daily.twist.id === id;
+function loadDaily() { try { const v = JSON.parse(localStorage.getItem('ward9-daily') || 'null'); return v && typeof v === 'object' ? v : {}; } catch (e) { return {}; } }
+function dailyLabel() {
+  const t = dailyToday(), d = loadDaily();
+  const best = d.date === t.date ? d.best : 0;
+  return t.twist.name + ' · ' + (t.map === 'basement' ? 'The Basement' : 'Ward Nine') + (best ? ' · today ' + best : '') + (d.streak > 1 ? ' · ' + d.streak + ' day streak' : '');
+}
+function recordDaily(sc) {
+  const d = loadDaily(), t = daily.date;
+  const y = new Date(Date.parse(t + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
+  if (d.date !== t) { d.streak = d.date === y ? (d.streak || 1) + 1 : 1; d.date = t; d.best = 0; }
+  const isBest = sc > (d.best || 0); if (isBest) d.best = sc;
+  try { localStorage.setItem('ward9-daily', JSON.stringify(d)); } catch (e) {}
+  return { isBest, d };
+}
 
 // ---------- Audio ----------
 let ac = null, master = null, noiseBuf = null;
@@ -771,7 +806,8 @@ const TYPES = {
 const STOKER = { color: '#1d1108', eye: '255,150,40' };
 const bossName = () => isBase() ? 'The Stoker' : 'The Ward Sister';
 function newGame() {
-  buildWorld();
+  if (daily) { const r = Math.random; Math.random = daily.rng(); try { buildWorld(); } finally { Math.random = r; } }
+  else buildWorld();
   P = { x: WORLD_W / 2, y: (COR_Y0 + COR_Y1) / 2, r: 14, a: 0, hp: 100, bat: 100, batMax: 100, beam: 1, light: true,
         gun: 'pistol', ammo: { pistol: { clip: 8, reserve: 32 }, shotgun: { clip: 0, reserve: 0 }, nailgun: { clip: 0, reserve: 0 }, flaregun: { clip: 0, reserve: 0 } },
         owned: { pistol: true }, steam: false, steamTold: false,
@@ -805,12 +841,12 @@ function nextHour() {
   let scr = 0;
   for (let i = 0; i < count; i++) { const t = pickType(n, scr); if (t === 'screamer') scr++; toSpawn.push(t); }
   if (bossHour) toSpawn.splice(Math.min(3, toSpawn.length), 0, 'boss');
-  spawnT = 2.5; breakT = 0; fuseReady = true;
+  spawnT = 2.5; breakT = 0; fuseReady = !twist('blackout');
   enemies = enemies.filter(e => !e.disguise); // fakers nobody fell for slink off at the hour
   for (let i = 0; i < 2; i++) dropPickup('battery', freeSpot(150));
   dropPickup('ammo', freeSpot(150)); dropPickup(ammoDrop(), freeSpot(150));
   // fakers: from 1 AM, one or two things that look like pickups
-  if (n >= 1) for (let i = 0; i < (n >= 4 ? 2 : 1); i++) { const sp = freeSpot(420), f = makeEnemy('faker', sp.x, sp.y, false); f.disguise = true; f.fakeKind = pick(['med', 'battery', 'ammo']); enemies.push(f); }
+  if (n >= 1 || twist('fakers')) for (let i = 0; i < (twist('fakers') ? 3 : n >= 4 ? 2 : 1); i++) { const sp = freeSpot(420), f = makeEnemy('faker', sp.x, sp.y, false); f.disguise = true; f.fakeKind = pick(['med', 'battery', 'ammo']); enemies.push(f); }
   // new guns lying around: the nail gun from 2 AM, the flare gun from 3 AM
   if (n >= 2 && !P.owned.nailgun && !pickups.some(q => q.kind === 'nailgun')) dropPickup('nailgun', freeSpotIn(pick(rooms.filter(r => r.kind !== 'lift'))));
   if (n >= 3 && !P.owned.flaregun && !pickups.some(q => q.kind === 'flaregun')) dropPickup('flaregun', freeSpotIn(pick(rooms.filter(r => r.kind !== 'lift'))));
@@ -1182,7 +1218,7 @@ function update(dt) {
     p.t += dt;
     if (Math.hypot(p.x - P.x, p.y - P.y) < P.r + 16) {
       p.got = true; sfx.pick();
-      if (p.kind === 'battery') { P.bat = Math.min(P.batMax, P.bat + 45); note('+ Battery'); }
+      if (p.kind === 'battery') { P.bat = Math.min(P.batMax, P.bat + 45 * (twist('dim') ? 2 : 1)); note('+ Battery'); }
       if (p.kind === 'ammo') { P.ammo.pistol.reserve += 12; note('+ 12 rounds'); }
       if (p.kind === 'shells') { P.ammo.shotgun.reserve += 6; note('+ 6 shells'); }
       if (p.kind === 'nails') { P.ammo.nailgun.reserve += 30; note('+ 30 nails'); }
@@ -1513,14 +1549,25 @@ function updateHud() {
 
 // ---------- Flow ----------
 function setHud(on) { ['hud', 'hudClock', 'hudScore', 'hudAmmo'].forEach(id => $(id).hidden = !on); $('tPause').hidden = !(on && isTouch); if (!on) { $('hudBoss').hidden = true; $('prompt').hidden = true; } }
-function start() {
+function start(isDaily) {
   initAudio();
+  if (isDaily === true) {
+    if (!daily) savedOpts = { ...opts };
+    daily = dailyToday(); opts.map = daily.map; opts.mode = 'shift'; opts.diff = 'normal';
+  } else if (daily) { Object.assign(opts, savedOpts); daily = null; }
   D = DIFF[opts.diff]; loadBest();
+  if (twist('swarm')) D = { ...D, count: D.count * 1.4 };
+  if (twist('dim')) D = { ...D, drain: D.drain * 2 };
   newGame(); hitStop = 0; hitMark = null;
+  if (twist('shotgun')) { P.owned.shotgun = true; P.ammo.shotgun.clip = 4; P.ammo.shotgun.reserve = 12; P.gun = 'shotgun'; }
+  if (twist('nails')) { P.owned.nailgun = true; P.ammo.nailgun.clip = GUNS.nailgun.clip; P.ammo.nailgun.reserve = 48; P.gun = 'nailgun'; }
+  if (daily) setTimeout(() => { if (state === 'play' && daily) { showMsg('Daily · ' + daily.twist.name); note(daily.twist.desc); } }, 2400);
   $('menu').hidden = true; $('endScreen').hidden = true; $('pauseScreen').hidden = true;
   setHud(true); state = 'play'; last = performance.now();
 }
 function toMenu() {
+  if (daily) { Object.assign(opts, savedOpts); daily = null; syncSeg(); }
+  $('dailyTxt').textContent = dailyLabel();
   state = 'menu'; setHud(false);
   $('endScreen').hidden = true; $('pauseScreen').hidden = true; $('menu').hidden = false;
   $('message').classList.remove('show');
@@ -1533,8 +1580,9 @@ function setPaused(p) {
 function finish(won) {
   state = won ? 'won' : 'dead';
   if (won) score += Math.round(P.hp) * 10;
-  const isBest = score > best;
+  const isBest = !daily && score > best;
   if (isBest) { best = score; try { localStorage.setItem(bestKey(), String(best)); } catch (e) {} }
+  const dr = daily ? recordDaily(score) : null;
   showBest(); setHud(false);
   const endless = opts.mode === 'endless';
   $('endTag').textContent = won ? '6:00 AM · Sunrise' : 'Lost at ' + hourLabel(hour);
@@ -1542,7 +1590,7 @@ function finish(won) {
   $('endText').textContent = won ? 'Grey light crawls through the ward windows and the things in the corners go still. You made it through the shift.'
     : endless ? 'The night never ended. You held out for ' + hour + (hour === 1 ? ' hour' : ' hours') + ' before the dark took you.'
     : 'The ward is quiet again. Nobody answers when the day shift calls your name.';
-  $('endStats').textContent = 'Score ' + score + ' · ' + kills + ' put down · ' + D.name + (isBest ? ' · New best' : '');
+  $('endStats').textContent = 'Score ' + score + ' · ' + kills + ' put down · ' + (dr ? 'Daily · ' + daily.twist.name + ' · today\'s best ' + dr.d.best + (dr.isBest ? ' (new)' : '') + (dr.d.streak > 1 ? ' · ' + dr.d.streak + ' day streak' : '') : D.name + (isBest ? ' · New best' : ''));
   $('endScreen').hidden = false; $('againBtn').focus();
   $('message').classList.remove('show');
 }
@@ -1577,8 +1625,10 @@ if (!document.documentElement.requestFullscreen) $('fsBtn').hidden = true;
 // quiet when the tab is hidden
 document.addEventListener('visibilitychange', () => { if (!ac) return; if (document.hidden) ac.suspend().catch(() => {}); else ac.resume().catch(() => {}); });
 
-$('startBtn').addEventListener('click', start);
-$('againBtn').addEventListener('click', start);
+$('startBtn').addEventListener('click', () => start(false));
+$('againBtn').addEventListener('click', () => start(!!daily));
+$('dailyBtn').addEventListener('click', () => start(true));
+$('dailyTxt').textContent = dailyLabel();
 $('menuBtn').addEventListener('click', toMenu);
 $('quitBtn').addEventListener('click', toMenu);
 $('resumeBtn').addEventListener('click', () => setPaused(false));
@@ -1602,7 +1652,7 @@ for (const type in TYPES) { const e = { type, x: 60, y: 60, r: TYPES[type].r || 
 ctx.globalAlpha = 1; ctx.shadowBlur = 0;
 // progress sync between devices (sync.js): best scores only, settings stay on each device
 if (window.GameSync) {
-  GameSync.init({ game: 'wardnine', keys: [{ match: /^ward9-best/, mode: 'max' }], idle: () => state === 'menu' });
+  GameSync.init({ game: 'wardnine', keys: [{ match: /^ward9-best/, mode: 'max' }, { match: 'ward9-daily' }], idle: () => state === 'menu' });
   $('syncBtn').addEventListener('click', () => GameSync.open());
 } else $('syncBtn').hidden = true;
 // test hook (only with ?test in the address): lets the playtests reach inside
@@ -1612,7 +1662,7 @@ if (/[?&]test\b/.test(location.search)) window.__w9 = {
   start, nextHour, spawn: (t, x, y) => { const e = makeEnemy(t, x, y, true); enemies.push(e); if (t === 'boss') boss = e; return e; },
   give: g => { P.owned[g] = true; P.ammo[g].clip = GUNS[g].clip; P.ammo[g].reserve = 99; P.gun = g; }, shoot: tryShoot, switchGun,
   aim: (x, y) => { mouse.x = x - cam.x; mouse.y = y - cam.y; }, step: sec => { for (let i = 0; i < sec * 60; i++) if (state === 'play') update(1 / 60); },
-  setMap: m => { opts.map = m; syncSeg(); }
+  setMap: m => { opts.map = m; syncSeg(); }, get daily() { return daily; }, startDaily: () => start(true), toMenu
 };
 requestAnimationFrame(frame);
 })();
